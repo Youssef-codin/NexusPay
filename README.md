@@ -39,6 +39,11 @@ transfers. EGP only (stored in piastres).
 ## Database Schema
 
 ```sql
+CREATE TYPE transaction_type AS ENUM ('debit', 'credit');
+CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed');
+CREATE TYPE scheduled_transfer_status AS ENUM ('pending', 'processing', 'completed', 'cancelled', 'failed');
+CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed');
+
 CREATE TABLE users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email       TEXT NOT NULL UNIQUE,
@@ -52,18 +57,19 @@ CREATE TABLE users (
 CREATE TABLE wallets (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL UNIQUE REFERENCES users(id),
-    balance     BIGINT NOT NULL DEFAULT 0,
+    balance     BIGINT NOT NULL DEFAULT 0 CHECK (balance >= 0),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at  TIMESTAMPTZ
 );
 
 CREATE TABLE transactions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wallet_id       UUID NOT NULL REFERENCES wallets(id),
-    amount          BIGINT NOT NULL,
-    type            TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'pending',
-    reference_id    UUID,
+    amount          BIGINT NOT NULL CHECK (amount > 0),
+    type            transaction_type NOT NULL,
+    status          transaction_status NOT NULL DEFAULT 'pending',
+    transfer_id     UUID REFERENCES transfers(id) DEFERRABLE INITIALLY DEFERRED,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at      TIMESTAMPTZ
 );
@@ -72,26 +78,47 @@ CREATE TABLE transfers (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     from_wallet_id          UUID NOT NULL REFERENCES wallets(id),
     to_wallet_id            UUID NOT NULL REFERENCES wallets(id),
-    amount                  BIGINT NOT NULL,
+    amount                  BIGINT NOT NULL CHECK (amount > 0),
+    status                  transfer_status NOT NULL DEFAULT 'pending',
     note                    TEXT,
-    debit_transaction_id    UUID NOT NULL REFERENCES transactions(id),
-    credit_transaction_id   UUID NOT NULL REFERENCES transactions(id),
+    debit_transaction_id    UUID UNIQUE REFERENCES transactions(id) DEFERRABLE INITIALLY DEFERRED,
+    credit_transaction_id   UUID UNIQUE REFERENCES transactions(id) DEFERRABLE INITIALLY DEFERRED,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at              TIMESTAMPTZ
 );
 
 CREATE TABLE scheduled_transfers (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    from_wallet_id  UUID NOT NULL REFERENCES wallets(id),
-    to_wallet_id    UUID NOT NULL REFERENCES wallets(id),
-    amount          BIGINT NOT NULL,
-    note            TEXT,
-    scheduled_at    TIMESTAMPTZ NOT NULL,
-    executed_at     TIMESTAMPTZ,
-    status          TEXT NOT NULL DEFAULT 'pending',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at      TIMESTAMPTZ
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transfer_id UUID NOT NULL UNIQUE REFERENCES transfers(id),
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    executed_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER users_set_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER wallets_set_updated_at
+    BEFORE UPDATE ON wallets
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER transfers_set_updated_at
+    BEFORE UPDATE ON transfers
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER scheduled_transfers_set_updated_at
+    BEFORE UPDATE ON scheduled_transfers
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 ```
 
 ---
@@ -122,7 +149,6 @@ CREATE TABLE scheduled_transfers (
 | POST   | `/transfers`     | ✅   | Send money to another user    |
 | GET    | `/transfers`     | ✅   | Get sent and received history |
 | GET    | `/transfers/:id` | ✅   | Get single transfer           |
-| DELETE | `/transfers/:id` | ✅   | Reverse/cancel a transfer     |
 
 ### Scheduled Transfers
 
@@ -164,10 +190,8 @@ CREATE TABLE scheduled_transfers (
 
 ## Transaction Types
 
-- `top_up` — Stripe added money to wallet
-- `transfer_debit` — money sent out
-- `transfer_credit` — money received
-- `reversal` — transaction reversed
+- `debit` — money sent out
+- `credit` — money received or topped up
 
 ## Transaction Statuses
 
@@ -177,11 +201,17 @@ CREATE TABLE scheduled_transfers (
 - `failed` — something went wrong
 - `reversed` — rolled back
 
+## Transfer Statuses
+
+- `pending` — initiated
+- `completed` — successful
+- `failed` — something went wrong
+
 ## Scheduled Transfer Statuses
 
 - `pending` — waiting for execution
 - `processing` — cron picked it up
-- `executed` — completed successfully
+- `completed` — executed successfully
 - `failed` — cron tried but failed
 - `cancelled` — user cancelled
 
@@ -199,6 +229,21 @@ CREATE TABLE scheduled_transfers (
 
 ---
 
+## Transfer Flow
+
+1. Client calls `POST /transfers`
+2. Server creates a `transfers` row with status `pending`, nullable transaction IDs
+3. Server inserts debit transaction (`pending`) and credit transaction (`pending`)
+4. Server updates the transfer with both transaction IDs
+5. Execute balance changes within a DB transaction:
+   - Debit sender's wallet
+   - Credit receiver's wallet
+   - Mark both transactions as `completed`
+   - Mark transfer as `completed`
+6. On any failure, mark transactions and transfer as `failed`
+
+---
+
 ## Cron Job — Scheduled Transfers
 
 Runs every minute:
@@ -206,7 +251,7 @@ Runs every minute:
 1. Query `scheduled_transfers` where `status = pending` AND `scheduled_at <= NOW()`
 2. Set status to `processing`
 3. Execute transfer logic (same as regular transfer)
-4. Set status to `executed` or `failed`
+4. Set status to `completed` or `failed`
 
 > Note: `processing` status acts as a crash recovery guard.
 > Stuck `processing` records can be detected and retried or flagged.
@@ -219,3 +264,6 @@ Runs every minute:
 - JWT auth will be replaced by shared auth service in Project 2
 - Soft deletes used on `users`, `transactions`, `transfers`, `scheduled_transfers`
 - Double-entry bookkeeping: every transfer creates two transaction records
+- Webhook signature must be verified using `stripe.ConstructEvent`
+- `/users/search` requires a minimum query length of 3 characters and returns only non-sensitive fields (id, full_name, email)
+- Use `SELECT ... FOR UPDATE SKIP LOCKED` in the cron job to prevent concurrent duplicate execution across multiple instances

@@ -5,7 +5,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgres://joe-arch:password@db:5432/nexus
+      - DATABASE_URL=postgres://joe-arch:password@db:5432/nexuspay
       - REDIS_URL=redis://redis:6379
       - PORT=3000
       - GIN_MODE=release
@@ -22,7 +22,7 @@ services:
     environment:
       POSTGRES_USER: joe-arch
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: nexus
+      POSTGRES_DB: nexuspay
     ports:
       - "5433:5432"
     volumes:

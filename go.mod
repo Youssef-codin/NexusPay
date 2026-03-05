@@ -1,4 +1,4 @@
-module github.com/Youssef-codin/nexus
+module github.com/Youssef-codin/NexusPay
 
 go 1.25.0
 

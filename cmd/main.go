@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Youssef-codin/nexus/internal/utils/env"
+	"github.com/Youssef-codin/NexusPay/internal/utils/env"
 	"github.com/jackc/pgx/v5"
 )
 
