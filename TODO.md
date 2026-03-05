@@ -18,7 +18,7 @@
 ## Server
 
 - [ ] Graceful shutdown
-- [ ] Health check endpoint (`GET /health`)
+- [] Health check endpoint (`GET /health`)
 
 ## Database
 
