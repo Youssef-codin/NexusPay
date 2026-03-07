@@ -1,12 +1,12 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    queries: "./internal/utils/db/postgresql/sqlc/queries.sql"
-    schema: "./internal/utils/db/postgresql/migrations/"
+    queries: "./internal/db/postgresql/sqlc/queries/"
+    schema: "./internal/db/postgresql/migrations/"
     gen:
       go:
         package: "repo"
-        out: "./internal/utils/db/postgresql/sqlc"
+        out: "./internal/db/postgresql/sqlc"
         sql_package: "pgx/v5"
         emit_json_tags: true
         emit_interface: true

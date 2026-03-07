@@ -4,23 +4,24 @@
 
 - [x] Project config (env loading, config struct)
 - [x] Database connection (PostgreSQL pool)
-- [ ] Redis client setup
+- [x] Redis client setup
 
 ## Router & Middleware
 
 - [x] Chi router init
-- [ ] CORS
+- [x] CORS
 - [x] Logger
 - [x] Recoverer
-- [ ] Auth middleware (JWT validation)
-- [ ] Rate limiting with httprate-redis
+- [x] Auth middleware (JWT validation)
+- [x] Rate limiting with httprate-redis
 
 ## Server
 
-- [ ] Graceful shutdown
-- [] Health check endpoint (`GET /health`)
+- [x] Graceful shutdown
+- [x] Health check endpoint (`GET /health`)
 
 ## Database
 
 - [x] sqlc setup + sqlc.yaml
-- [ ] goose migrations wired (Makefile commands)
+- [x] goose migrations wired (Makefile commands)
+- [x] setup redis client api

@@ -45,13 +45,15 @@ CREATE TYPE scheduled_transfer_status AS ENUM ('pending', 'processing', 'complet
 CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed');
 
 CREATE TABLE users (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email       TEXT NOT NULL UNIQUE,
-    password    TEXT NOT NULL,
-    full_name   TEXT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at  TIMESTAMPTZ
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email               TEXT NOT NULL UNIQUE,
+    password            TEXT NOT NULL,
+    full_name           TEXT NOT NULL,
+    refresh_token       TEXT,
+    token_expires_at    TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at          TIMESTAMPTZ
 );
 
 CREATE TABLE wallets (
@@ -99,26 +101,26 @@ CREATE TABLE scheduled_transfers (
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
+NEW.updated_at = NOW();
+RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER users_set_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER wallets_set_updated_at
-    BEFORE UPDATE ON wallets
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON wallets
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER transfers_set_updated_at
-    BEFORE UPDATE ON transfers
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON transfers
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER scheduled_transfers_set_updated_at
-    BEFORE UPDATE ON scheduled_transfers
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON scheduled_transfers
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 ```
 
 ---

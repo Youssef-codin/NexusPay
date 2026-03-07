@@ -5,7 +5,7 @@ default:
 # ── Dev ────────────────────────────────────────────────────────────────────────
 
 [group('dev')]
-dev: up
+run: up
     air
 
 # ── Build ──────────────────────────────────────────────────────────────────────
@@ -17,21 +17,13 @@ build:
 # ── Test ───────────────────────────────────────────────────────────────────────
 
 [group('test')]
-test filter="":
-    go test -v -run {{filter}} ./...
-
-[group('test')]
-test-integration filter="":
-    go test -tags=integration -v -run {{filter}} ./integration/...
-
-[group('test')]
-test-all filter="":
-    go test -tags=integration -v -run {{filter}} ./...
+test:
+    go test ./...
 
 [group('test')]
 coverage:
     mkdir -p docs
-    go test -coverprofile=coverage.out ./...
+    go test -tags=integration -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out -o docs/coverage.html
 
 # ── Code Quality ───────────────────────────────────────────────────────────────
@@ -67,3 +59,31 @@ logs *args:
 [group('clean')]
 clean:
     rm -rf bin/ coverage.out tmp/
+
+# ── SQL / Database ───────────────────────────────────────────────────────────
+
+[group('db')]
+sqlc-gen:
+    sqlc generate
+
+[group('db')]
+migrate-up:
+    goose -dir {{env_var('GOOSE_MIGRATION_DIR')}} {{env_var('GOOSE_DRIVER')}} "{{env_var('GOOSE_DBSTRING')}}" up
+
+[group('db')]
+migrate-down:
+    goose -dir {{env_var('GOOSE_MIGRATION_DIR')}} {{env_var('GOOSE_DRIVER')}} "{{env_var('GOOSE_DBSTRING')}}" down
+
+[group('db')]
+migrate-status:
+    goose -dir {{env_var('GOOSE_MIGRATION_DIR')}} {{env_var('GOOSE_DRIVER')}} "{{env_var('GOOSE_DBSTRING')}}" status
+
+[group('db')]
+migrate-create NAME="migration":
+    goose -dir {{env_var('GOOSE_MIGRATION_DIR')}} create {{NAME}} sql
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
+
+[group('setup')]
+setup: tidy sqlc-gen
+    @echo "Setup complete!"

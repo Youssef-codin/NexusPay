@@ -28,7 +28,7 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U joe-arch -d todo"]
+      test: ["CMD-SHELL", "pg_isready -U joe-arch -d nexuspay"]
       interval: 5s
       timeout: 5s
       retries: 5
