@@ -34,6 +34,34 @@ transfers. EGP only (stored in piastres).
 - `go-playground/validator` — request validation
 - `stripe/stripe-go` — Stripe SDK
 
+## Project Structure
+
+```
+Nexus/
+├── cmd/                    # Application entrypoints
+│   ├── main.go            # Main entrypoint
+│   └── app.go             # App initialization & routing
+├── internal/              # Private application code
+│   ├── db/
+│   │   ├── postgresql/    # PostgreSQL related
+│   │   │   ├── migrations/   # DB migrations (Goose)
+│   │   │   └── sqlc/      # Generated SQL queries
+│   │   │       └── queries/  # SQL query files
+│   │   └── redisDb/       # Redis caching layer
+│   ├── security/          # Auth, JWT, password hashing
+│   ├── users/             # User handlers, services, types
+│   └── utils/             # Utilities
+│       ├── api/           # API helpers
+│       └── env/           # Environment config
+├── docs/                  # Swagger documentation
+├── compose.yaml           # Docker Compose config
+├── Dockerfile             # Container image
+├── go.mod / go.sum        # Dependencies
+├── sqlc.yaml              # sqlc config
+├── justfile               # Task runner
+└── .air.toml              # Hot reload config
+```
+
 ---
 
 ## Database Schema

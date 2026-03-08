@@ -2,10 +2,17 @@ package users
 
 import (
 	"context"
+	"errors"
 
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
 	"github.com/jackc/pgx/v5"
+)
+
+var (
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrUsernameTaken      = errors.New("username taken")
 )
 
 type IService interface {

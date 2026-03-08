@@ -15,6 +15,7 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
 	"github.com/Youssef-codin/NexusPay/internal/security"
 	"github.com/Youssef-codin/NexusPay/internal/users"
+	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -84,8 +85,8 @@ func (app *application) mount() http.Handler {
 			userService := users.NewService(SQLCRepo, app.db, userCache)
 			userController := users.NewController(userService)
 
-			rauth.Post("/register", userController.RegisterController)
-			rauth.Post("/login", userController.LoginController)
+			rauth.Post("/register", api.Wrap(userController.RegisterController))
+			rauth.Post("/login", api.Wrap(userController.LoginController))
 
 		})
 	})
