@@ -33,20 +33,17 @@ type IService interface {
 
 type Service struct {
 	repo  authRepository
-	db    *pgx.Conn
 	users *redisDb.Users
 	auth  *security.Authenticator
 }
 
 func NewService(
 	repo authRepository,
-	db *pgx.Conn,
 	users *redisDb.Users,
 	auth *security.Authenticator,
 ) IService {
 	return &Service{
 		repo:  repo,
-		db:    db,
 		users: users,
 		auth:  auth,
 	}

@@ -65,7 +65,7 @@ func (app *application) mount() http.Handler {
 
 	SQLCRepo := repo.New(app.db)
 	UserCache := redisDb.NewUsers(app.redis)
-	AuthService := auth.NewService(SQLCRepo, app.db, UserCache, authenticator)
+	AuthService := auth.NewService(SQLCRepo, UserCache, authenticator)
 	AuthController := auth.NewController(AuthService)
 
 	rmain.Group(func(rprotected chi.Router) {
@@ -76,7 +76,7 @@ func (app *application) mount() http.Handler {
 		rprotected.Get("/auth/test", api.Wrap(AuthController.TestAuth))
 		rprotected.Post("/auth/logout", api.Wrap(AuthController.LogoutController))
 
-		UserService := users.NewService(SQLCRepo, app.db, UserCache)
+		UserService := users.NewService(SQLCRepo, UserCache)
 		UserController := users.NewController(UserService)
 
 		rprotected.Get("/users", api.Wrap(UserController.SearchByNameController))

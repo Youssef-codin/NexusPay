@@ -2,10 +2,10 @@ package users
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -45,7 +45,7 @@ func TestFindByName_Success(t *testing.T) {
 			FullName: "John Smith",
 		},
 	}
-	svc := NewService(mock, nil, nil)
+	svc := NewService(mock, nil)
 
 	req := FindUserRequest{FullName: "John Doe"}
 	resp, err := svc.findByName(context.Background(), req)
@@ -64,7 +64,7 @@ func TestFindByName_Success(t *testing.T) {
 
 func TestFindByName_EmptyResult(t *testing.T) {
 	mock := newMockUserRepo()
-	svc := NewService(mock, nil, nil)
+	svc := NewService(mock, nil)
 
 	req := FindUserRequest{FullName: "Nonexistent"}
 	resp, err := svc.findByName(context.Background(), req)
@@ -93,7 +93,7 @@ func TestFindByName_PartialMatch(t *testing.T) {
 			FullName: "John",
 		},
 	}
-	svc := NewService(mock, nil, nil)
+	svc := NewService(mock, nil)
 
 	req := FindUserRequest{FullName: "John"}
 	resp, err := svc.findByName(context.Background(), req)
@@ -108,8 +108,8 @@ func TestFindByName_PartialMatch(t *testing.T) {
 
 func TestFindByName_DatabaseError(t *testing.T) {
 	mock := newMockUserRepo()
-	mock.getUserByNameErr = pgx.ErrTxClosed
-	svc := NewService(mock, nil, nil)
+	mock.getUserByNameErr = sql.ErrConnDone
+	svc := NewService(mock, nil)
 
 	req := FindUserRequest{FullName: "John"}
 	_, err := svc.findByName(context.Background(), req)
