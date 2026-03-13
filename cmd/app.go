@@ -15,6 +15,7 @@ import (
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
 	"github.com/Youssef-codin/NexusPay/internal/security"
+	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -63,8 +64,8 @@ func (app *application) mount() http.Handler {
 	authenticator := security.NewAuthenticator(app.config.secret, refreshTokenDuration)
 
 	SQLCRepo := repo.New(app.db)
-	AuthCache := redisDb.NewUsers(app.redis)
-	AuthService := auth.NewService(SQLCRepo, app.db, AuthCache, authenticator)
+	UserCache := redisDb.NewUsers(app.redis)
+	AuthService := auth.NewService(SQLCRepo, app.db, UserCache, authenticator)
 	AuthController := auth.NewController(AuthService)
 
 	rmain.Group(func(rprotected chi.Router) {
@@ -74,6 +75,11 @@ func (app *application) mount() http.Handler {
 
 		rprotected.Get("/auth/test", api.Wrap(AuthController.TestAuth))
 		rprotected.Post("/auth/logout", api.Wrap(AuthController.LogoutController))
+
+		UserService := users.NewService(SQLCRepo, app.db, UserCache)
+		UserController := users.NewController(UserService)
+
+		rprotected.Get("/users", api.Wrap(UserController.SearchByNameController))
 	})
 
 	rmain.Group(func(rpublic chi.Router) {
@@ -111,6 +117,7 @@ func (app *application) run(h http.Handler) error {
 		IdleTimeout:  time.Minute,
 	}
 
+	//graceful shutdown
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("Server error: %v", err)

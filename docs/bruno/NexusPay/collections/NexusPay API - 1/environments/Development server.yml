@@ -1,4 +1,6 @@
 name: Development server
 variables:
   - name: baseUrl
-    value: localhost:3000
+    value: http://localhost:3000
+  - secret: true
+    name: token

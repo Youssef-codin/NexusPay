@@ -24,6 +24,11 @@ WHERE id = $1 AND deleted_at IS NULL;
 SELECT * FROM users
 WHERE email = $1 AND deleted_at IS NULL;
 
+-- name: GetUserByName :many
+SELECT * FROM users
+WHERE full_name % $1 AND deleted_at IS NULL
+ORDER BY similarity(full_name, $1) DESC;
+
 -- name: GetUserByRefreshToken :one
 SELECT * FROM users
 WHERE refresh_token = $1 AND deleted_at IS NULL;

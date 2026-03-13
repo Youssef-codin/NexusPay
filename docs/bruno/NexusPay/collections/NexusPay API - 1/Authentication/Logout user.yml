@@ -28,7 +28,7 @@ examples:
     description: Logout successful
     request:
       url: "{{baseUrl}}/auth/logout"
-      method: GET
+      method: POST
     response:
       status: 200
       statusText: OK
@@ -45,7 +45,7 @@ examples:
     description: Unauthorized - missing or invalid token
     request:
       url: "{{baseUrl}}/auth/logout"
-      method: GET
+      method: POST
     response:
       status: 401
       statusText: Unauthorized

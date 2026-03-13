@@ -38,7 +38,7 @@ func (c *controller) LoginController(w http.ResponseWriter, req *http.Request) e
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest):
-			return api.WrappedError(http.StatusBadRequest, err.Error())
+			return api.WrappedError(http.StatusBadRequest, "Bad Request")
 		case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrUserNotFound):
 			return api.WrappedError(http.StatusUnauthorized, "Invalid credentials")
 		default:
@@ -61,9 +61,9 @@ func (c *controller) RegisterController(w http.ResponseWriter, req *http.Request
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest), errors.Is(err, ErrPasswordTooLong):
-			return api.WrappedError(http.StatusBadRequest, err.Error())
+			return api.WrappedError(http.StatusBadRequest, "Bad Request")
 		case errors.Is(err, ErrUserAlreadyExists):
-			return api.WrappedError(http.StatusConflict, err.Error())
+			return api.WrappedError(http.StatusConflict, "Already exists")
 		default:
 			return err
 		}

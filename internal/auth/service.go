@@ -8,7 +8,6 @@ import (
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
 	"github.com/Youssef-codin/NexusPay/internal/security"
-	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,14 +32,14 @@ type IService interface {
 }
 
 type Service struct {
-	repo  repo.Querier
+	repo  authRepository
 	db    *pgx.Conn
 	users *redisDb.Users
 	auth  *security.Authenticator
 }
 
 func NewService(
-	repo repo.Querier,
+	repo authRepository,
 	db *pgx.Conn,
 	users *redisDb.Users,
 	auth *security.Authenticator,
@@ -54,10 +53,6 @@ func NewService(
 }
 
 func (svc *Service) login(ctx context.Context, req loginRequest) (loginResponse, error) {
-	if err := api.Validate(req); err != nil {
-		return loginResponse{}, ErrBadRequest
-	}
-
 	user, err := svc.repo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -102,10 +97,6 @@ func (svc *Service) login(ctx context.Context, req loginRequest) (loginResponse,
 }
 
 func (svc *Service) register(ctx context.Context, req registerRequest) (registerResponse, error) {
-	if err := api.Validate(req); err != nil {
-		return registerResponse{}, ErrBadRequest
-	}
-
 	if _, err := svc.repo.GetUserByEmail(ctx, req.Email); err == nil {
 		return registerResponse{}, ErrUserAlreadyExists
 	} else if !errors.Is(err, pgx.ErrNoRows) {

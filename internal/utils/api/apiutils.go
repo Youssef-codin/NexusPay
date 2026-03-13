@@ -26,7 +26,10 @@ func Read(r *http.Request, data any) error {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 
-	return decoder.Decode(data)
+	if err := decoder.Decode(data); err != nil {
+		return err
+	}
+	return Validate(data)
 }
 
 func Respond(w http.ResponseWriter, obj any, status int) {

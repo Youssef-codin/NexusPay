@@ -64,8 +64,10 @@ CREATE TABLE scheduled_transfers (
     executed_at  TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE INDEX idx_users_name ON users(full_name);
+CREATE INDEX idx_users_name_trgm ON users USING GIN (full_name gin_trgm_ops);
 CREATE INDEX idx_wallets_user_id ON wallets(user_id);
 CREATE INDEX idx_transactions_wallet_id ON transactions(wallet_id);
 CREATE INDEX idx_transactions_transfer_id ON transactions(transfer_id);
@@ -76,26 +78,26 @@ CREATE INDEX idx_scheduled_transfers_scheduled_at ON scheduled_transfers(schedul
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
+NEW.updated_at = NOW();
+RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER users_set_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER wallets_set_updated_at
-    BEFORE UPDATE ON wallets
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON wallets
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER transfers_set_updated_at
-    BEFORE UPDATE ON transfers
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON transfers
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER scheduled_transfers_set_updated_at
-    BEFORE UPDATE ON scheduled_transfers
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON scheduled_transfers
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- +goose StatementEnd
 
 -- +goose Down
@@ -105,6 +107,8 @@ DROP TRIGGER IF EXISTS transfers_set_updated_at ON transfers;
 DROP TRIGGER IF EXISTS wallets_set_updated_at ON wallets;
 DROP TRIGGER IF EXISTS users_set_updated_at ON users;
 
+DROP INDEX IF EXISTS idx_users_name_trgm;
+DROP EXTENSION IF EXISTS pg_trgm;
 DROP FUNCTION IF EXISTS set_updated_at();
 
 DROP TABLE IF EXISTS scheduled_transfers;

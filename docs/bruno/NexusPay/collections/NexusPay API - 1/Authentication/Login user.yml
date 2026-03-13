@@ -12,10 +12,17 @@ http:
     type: json
     data: |-
       {
-        "email": "john.doe@example.com",
-        "password": "SecurePassword123!"
+        "email": "john@gmail.com",
+        "password": "password"
       }
   auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setEnvVar("token", body.jwt_token);
 
 settings:
   encodeUrl: true

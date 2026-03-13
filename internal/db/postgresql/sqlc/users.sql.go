@@ -109,6 +109,42 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 	return i, err
 }
 
+const getUserByName = `-- name: GetUserByName :many
+SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at FROM users
+WHERE full_name % $1 AND deleted_at IS NULL
+ORDER BY similarity(full_name, $1) DESC
+`
+
+func (q *Queries) GetUserByName(ctx context.Context, fullName string) ([]User, error) {
+	rows, err := q.db.Query(ctx, getUserByName, fullName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Password,
+			&i.FullName,
+			&i.RefreshToken,
+			&i.TokenExpiresAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
 SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at FROM users
 WHERE refresh_token = $1 AND deleted_at IS NULL

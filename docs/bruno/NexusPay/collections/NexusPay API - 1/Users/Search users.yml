@@ -1,13 +1,17 @@
 info:
-  name: Logout user
+  name: Search users
   type: http
   seq: 1
   tags:
-    - Authentication
+    - Users
 
 http:
   method: GET
-  url: "{{baseUrl}}/auth/logout"
+  url: "{{baseUrl}}/users?name=John"
+  params:
+    - name: name
+      value: John
+      type: query
   auth:
     type: bearer
     token: "{{token}}"
@@ -20,9 +24,9 @@ settings:
 
 examples:
   - name: 200 Response
-    description: Logout successful
+    description: Users found
     request:
-      url: "{{baseUrl}}/auth/logout"
+      url: "{{baseUrl}}/users?name=John"
       method: GET
     response:
       status: 200
@@ -32,14 +36,11 @@ examples:
           value: application/json
       body:
         type: json
-        data: |-
-          {
-            "message": "Logged out successfully"
-          }
+        data: ""
   - name: 401 Response
     description: Unauthorized - missing or invalid token
     request:
-      url: "{{baseUrl}}/auth/logout"
+      url: "{{baseUrl}}/users?name=John"
       method: GET
     response:
       status: 401
@@ -51,7 +52,7 @@ examples:
         type: json
         data: |-
           {
-            "error": "unauthorized",
-            "message": "Missing or invalid authorization token",
-            "status_code": 401
+          "error": "unauthorized",
+          "message": "Missing or invalid authorization token",
+          "status_code": 401
           }

@@ -12,11 +12,16 @@ http:
     type: json
     data: |-
       {
-        "email": "john.doe@example.com",
-        "password": "SecurePassword123!",
+        "email": "john@gmail.com",
+        "password": "password",
         "full_name": "John Doe"
       }
   auth: inherit
+
+runtime:
+  variables:
+    - name: baseUrl
+      value: http://localhost:3000
 
 settings:
   encodeUrl: true

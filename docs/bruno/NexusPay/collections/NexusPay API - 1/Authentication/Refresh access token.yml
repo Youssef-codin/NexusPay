@@ -12,7 +12,7 @@ http:
     type: json
     data: |-
       {
-        "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+        "refresh_token": "8dc954202a3dd5ef04432c9e5e636cd8cf9059fd6a50d31d2bf9c633930f9a8a"
       }
   auth: inherit
 
