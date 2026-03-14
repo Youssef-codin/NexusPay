@@ -18,17 +18,17 @@ func NewUsers(client *redis.Client) *Users {
 	return &Users{client: client}
 }
 
-func (u *Users) Get(ctx context.Context, id string) (*repo.User, error) {
+func (u *Users) Get(ctx context.Context, id string) (repo.User, error) {
 	key := fmt.Sprintf("users:%s", id)
 	data, err := u.client.Get(ctx, key).Result()
 	if err != nil {
-		return nil, err
+		return repo.User{}, err
 	}
 	var user repo.User
 	if err := json.Unmarshal([]byte(data), &user); err != nil {
-		return nil, err
+		return repo.User{}, err
 	}
-	return &user, nil
+	return user, nil
 }
 
 func (u *Users) Set(ctx context.Context, id string, user *repo.User, ttl ...time.Duration) error {

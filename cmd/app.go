@@ -17,6 +17,7 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/security"
 	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
+	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -65,19 +66,30 @@ func (app *application) mount() http.Handler {
 
 	SQLCRepo := repo.New(app.db)
 	UserCache := redisDb.NewUsers(app.redis)
+
 	AuthService := auth.NewService(SQLCRepo, UserCache, authenticator)
 	AuthController := auth.NewController(AuthService)
+
+	UserService := users.NewService(SQLCRepo, UserCache)
+	UserController := users.NewController(UserService)
+
+	WalletService := wallet.NewService(SQLCRepo)
+	WalletController := wallet.NewController(WalletService)
 
 	rmain.Group(func(rprotected chi.Router) {
 		rprotected.Use(jwtauth.Verifier(authenticator.TokenAuth))
 		rprotected.Use(authenticator.AuthHandler())
 		rprotected.Use(api.NewUserLimiter(15, host, uint16(port)))
 
-		rprotected.Get("/auth/test", api.Wrap(AuthController.TestAuth))
-		rprotected.Post("/auth/logout", api.Wrap(AuthController.LogoutController))
+		rprotected.Route("/auth", func(r chi.Router) {
+			r.Get("/test", api.Wrap(AuthController.TestAuth))
+			r.Post("/logout", api.Wrap(AuthController.LogoutController))
+		})
 
-		UserService := users.NewService(SQLCRepo, UserCache)
-		UserController := users.NewController(UserService)
+		rprotected.Route("/wallet", func(r chi.Router) {
+			r.Get("/", api.Wrap(WalletController.GetByUserId))
+			r.Patch("/", api.Wrap(WalletController.TopUp))
+		})
 
 		rprotected.Get("/users", api.Wrap(UserController.SearchByNameController))
 	})

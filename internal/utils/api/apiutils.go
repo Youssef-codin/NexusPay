@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -51,6 +53,7 @@ func NewUserLimiter(requestsPerMin int, host string, port uint16) func(http.Hand
 			_, claims, _ := jwtauth.FromContext(r.Context())
 			sub, ok := claims["sub"].(string)
 			if !ok {
+				slog.Error("invalid sub claim in rate limiter")
 				return "", fmt.Errorf("invalid sub claim")
 			}
 			return sub, nil
@@ -59,4 +62,20 @@ func NewUserLimiter(requestsPerMin int, host string, port uint16) func(http.Hand
 			Host: host, Port: port,
 		}),
 	)
+}
+
+func GetTokenUserID(ctx context.Context) (string, error) {
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		slog.Error("failed to get claims from context", "error", err)
+		return "", fmt.Errorf("failed to get claims from context: %w", err)
+	}
+
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		slog.Error("invalid or missing sub claim in context")
+		return "", fmt.Errorf("invalid or missing sub claim")
+	}
+
+	return sub, nil
 }

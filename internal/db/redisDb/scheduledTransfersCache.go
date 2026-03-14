@@ -18,17 +18,17 @@ func NewScheduledTransfers(client *redis.Client) *ScheduledTransfers {
 	return &ScheduledTransfers{client: client}
 }
 
-func (s *ScheduledTransfers) Get(ctx context.Context, id string) (*repo.ScheduledTransfer, error) {
+func (s *ScheduledTransfers) Get(ctx context.Context, id string) (repo.ScheduledTransfer, error) {
 	key := fmt.Sprintf("scheduled_transfers:%s", id)
 	data, err := s.client.Get(ctx, key).Result()
 	if err != nil {
-		return nil, err
+		return repo.ScheduledTransfer{}, err
 	}
 	var st repo.ScheduledTransfer
 	if err := json.Unmarshal([]byte(data), &st); err != nil {
-		return nil, err
+		return repo.ScheduledTransfer{}, err
 	}
-	return &st, nil
+	return st, nil
 }
 
 func (s *ScheduledTransfers) Set(

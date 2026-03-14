@@ -18,17 +18,17 @@ func NewTransactions(client *redis.Client) *Transactions {
 	return &Transactions{client: client}
 }
 
-func (t *Transactions) Get(ctx context.Context, id string) (*repo.Transaction, error) {
+func (t *Transactions) Get(ctx context.Context, id string) (repo.Transaction, error) {
 	key := fmt.Sprintf("transactions:%s", id)
 	data, err := t.client.Get(ctx, key).Result()
 	if err != nil {
-		return nil, err
+		return repo.Transaction{}, err
 	}
 	var tx repo.Transaction
 	if err := json.Unmarshal([]byte(data), &tx); err != nil {
-		return nil, err
+		return repo.Transaction{}, err
 	}
-	return &tx, nil
+	return tx, nil
 }
 
 func (t *Transactions) Set(

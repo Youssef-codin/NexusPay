@@ -18,17 +18,17 @@ func NewTransfers(client *redis.Client) *Transfers {
 	return &Transfers{client: client}
 }
 
-func (t *Transfers) Get(ctx context.Context, id string) (*repo.Transfer, error) {
+func (t *Transfers) Get(ctx context.Context, id string) (repo.Transfer, error) {
 	key := fmt.Sprintf("transfers:%s", id)
 	data, err := t.client.Get(ctx, key).Result()
 	if err != nil {
-		return nil, err
+		return repo.Transfer{}, err
 	}
 	var transfer repo.Transfer
 	if err := json.Unmarshal([]byte(data), &transfer); err != nil {
-		return nil, err
+		return repo.Transfer{}, err
 	}
-	return &transfer, nil
+	return transfer, nil
 }
 
 func (t *Transfers) Set(
