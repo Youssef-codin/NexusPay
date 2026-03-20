@@ -28,30 +28,30 @@ func (r *WalletRepo) CreateWallet(
 	ctx context.Context,
 	arg repo.CreateWalletParams,
 ) (repo.CreateWalletRow, error) {
-	return db.Queries(ctx, r.db).CreateWallet(ctx, arg)
+	return r.db.GetDBTX(ctx).CreateWallet(ctx, arg)
 }
 
 func (r *WalletRepo) GetWalletById(ctx context.Context, id pgtype.UUID) (repo.Wallet, error) {
-	return db.Queries(ctx, r.db).GetWalletById(ctx, id)
+	return r.db.GetDBTX(ctx).GetWalletById(ctx, id)
 }
 
 func (r *WalletRepo) GetWalletByUserId(
 	ctx context.Context,
 	userID pgtype.UUID,
 ) (repo.Wallet, error) {
-	return db.Queries(ctx, r.db).GetWalletByUserId(ctx, userID)
+	return r.db.GetDBTX(ctx).GetWalletByUserId(ctx, userID)
 }
 
 func (r *WalletRepo) DeductFromBalance(
 	ctx context.Context,
 	arg repo.DeductFromBalanceParams,
 ) (repo.Wallet, error) {
-	return db.Queries(ctx, r.db).DeductFromBalance(ctx, arg)
+	return r.db.GetDBTX(ctx).DeductFromBalance(ctx, arg)
 }
 
 func (r *WalletRepo) AddToBalance(
 	ctx context.Context,
 	arg repo.AddToBalanceParams,
 ) (repo.Wallet, error) {
-	return db.Queries(ctx, r.db).AddToBalance(ctx, arg)
+	return r.db.GetDBTX(ctx).AddToBalance(ctx, arg)
 }

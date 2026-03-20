@@ -26,34 +26,34 @@ func NewAuthRepo(database *db.DB) authRepo {
 }
 
 func (r *AuthRepo) GetUserByEmail(ctx context.Context, email string) (repo.User, error) {
-	return db.Queries(ctx, r.db).GetUserByEmail(ctx, email)
+	return r.db.GetDBTX(ctx).GetUserByEmail(ctx, email)
 }
 
 func (r *AuthRepo) CreateUser(
 	ctx context.Context,
 	arg repo.CreateUserParams,
 ) (repo.CreateUserRow, error) {
-	return db.Queries(ctx, r.db).CreateUser(ctx, arg)
+	return r.db.GetDBTX(ctx).CreateUser(ctx, arg)
 }
 
 func (r *AuthRepo) GetUserByRefreshToken(
 	ctx context.Context,
 	token pgtype.Text,
 ) (repo.User, error) {
-	return db.Queries(ctx, r.db).GetUserByRefreshToken(ctx, token)
+	return r.db.GetDBTX(ctx).GetUserByRefreshToken(ctx, token)
 }
 
 func (r *AuthRepo) UpdateRefreshToken(
 	ctx context.Context,
 	arg repo.UpdateRefreshTokenParams,
 ) error {
-	return db.Queries(ctx, r.db).UpdateRefreshToken(ctx, arg)
+	return r.db.GetDBTX(ctx).UpdateRefreshToken(ctx, arg)
 }
 
 func (r *AuthRepo) GetUserById(ctx context.Context, id pgtype.UUID) (repo.User, error) {
-	return db.Queries(ctx, r.db).GetUserById(ctx, id)
+	return r.db.GetDBTX(ctx).GetUserById(ctx, id)
 }
 
 func (r *AuthRepo) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error {
-	return db.Queries(ctx, r.db).RevokeRefreshToken(ctx, id)
+	return r.db.GetDBTX(ctx).RevokeRefreshToken(ctx, id)
 }

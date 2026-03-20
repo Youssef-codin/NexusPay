@@ -46,7 +46,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	logger.Info("Connected to db", "dsn", cfg.db.dsn)
+	logger.Info("Connected to db")
 
 	database := db.New(pool)
 

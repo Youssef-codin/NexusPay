@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/Youssef-codin/NexusPay/internal/payment"
 	"github.com/stripe/stripe-go/v84"
@@ -14,7 +15,8 @@ import (
 var (
 	ErrPaymentFailed    = errors.New("payment failed")
 	ErrRefundFailed     = errors.New("refund failed")
-	ErrPaymentCancelled = errors.New("error cancelled")
+	ErrPaymentCancelled = errors.New("payment cancelled")
+	ErrPaymentTimeout   = errors.New("timeout reached")
 )
 
 type Service struct{}
@@ -28,23 +30,52 @@ func (svc *Service) ProcessPayment(
 	ctx context.Context,
 	req payment.ProcessPaymentRequest,
 ) (payment.ProcessPaymentResponse, error) {
-
 	params := &stripe.PaymentIntentParams{
-		Amount:      new(req.Amount),
+		Params: stripe.Params{
+			IdempotencyKey: stripe.String(req.TransactionID),
+		},
+		Amount:      stripe.Int64(req.Amount),
 		Currency:    stripe.String("egp"),
-		Description: new(req.Description),
+		Description: stripe.String(req.Description),
 		Metadata: map[string]string{
 			"transaction_id": req.TransactionID,
 		},
 		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
-			Enabled: new(true),
+			Enabled: stripe.Bool(true),
 		},
 	}
 
-	pi, err := paymentintent.New(params)
-	if err != nil {
+	var pi *stripe.PaymentIntent
+	var err error
+
+	for attempts := 0; attempts < 3; attempts++ {
+		callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		params.Context = callCtx
+		pi, err = paymentintent.New(params)
+		cancel()
+
+		if err == nil {
+			break
+		}
+
+		if callCtx.Err() == context.DeadlineExceeded {
+			slog.Warn(
+				"stripe timed out, retrying...",
+				"attempt",
+				attempts+1,
+				"transaction_id",
+				req.TransactionID,
+			)
+			continue // safe to retry because of idempotency key
+		}
+
+		// non-timeout error, don't retry
 		slog.Error("stripe payment failed", "error", err)
 		return payment.ProcessPaymentResponse{}, ErrPaymentFailed
+	}
+
+	if err != nil {
+		return payment.ProcessPaymentResponse{}, ErrPaymentTimeout
 	}
 
 	return payment.ProcessPaymentResponse{
@@ -53,7 +84,6 @@ func (svc *Service) ProcessPayment(
 		ClientSecret:      pi.ClientSecret,
 	}, nil
 }
-
 func (svc *Service) Refund(
 	ctx context.Context,
 	req payment.RefundRequest,

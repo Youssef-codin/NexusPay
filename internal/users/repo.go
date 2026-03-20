@@ -20,5 +20,5 @@ func NewUserRepo(database *db.DB) userRepo {
 }
 
 func (r *UserRepo) GetUserByName(ctx context.Context, fullName string) ([]repo.User, error) {
-	return db.Queries(ctx, r.db).GetUserByName(ctx, fullName)
+	return r.db.GetDBTX(ctx).GetUserByName(ctx, fullName)
 }

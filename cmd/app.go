@@ -99,8 +99,6 @@ func (app *application) mount() http.Handler {
 			api.Respond(w, nil, http.StatusNoContent)
 		})
 
-		rpublic.Post("/webhook/stripe", api.Wrap(WebhookController.Handle))
-
 		rpublic.Route("/auth", func(rauth chi.Router) {
 			rauth.Post("/register", api.Wrap(AuthController.RegisterController))
 			rauth.Post("/login", api.Wrap(AuthController.LoginController))
@@ -122,6 +120,21 @@ func (app *application) mount() http.Handler {
 		rprotected.Route("/wallet", func(r chi.Router) {
 			r.Get("/", api.Wrap(WalletController.GetByUserId))
 			r.Patch("/", api.Wrap(WalletController.TopUp))
+		})
+	})
+
+	rmain.Group(func(rwebhooks chi.Router) {
+		rwebhooks.Use(httprate.Limit(
+			100,
+			time.Minute,
+			httprate.WithKeyByIP(),
+			httprateredis.WithRedisLimitCounter(&httprateredis.Config{
+				Host: host,
+				Port: uint16(port),
+			}),
+		))
+		rwebhooks.Route("/webhook", func(r chi.Router) {
+			r.Post("/stripe", api.Wrap(WebhookController.Handle))
 		})
 	})
 
