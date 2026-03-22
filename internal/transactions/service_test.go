@@ -160,6 +160,7 @@ func TestUpdateStatus(t *testing.T) {
 	}{
 		{"pending_to_processing", repo.TransactionStatusPending, repo.TransactionStatusProcessing},
 		{"pending_to_reversed", repo.TransactionStatusPending, repo.TransactionStatusReversed},
+		{"pending_to_failed", repo.TransactionStatusPending, repo.TransactionStatusFailed},
 		{"processing_to_completed", repo.TransactionStatusProcessing, repo.TransactionStatusCompleted},
 		{"processing_to_failed", repo.TransactionStatusProcessing, repo.TransactionStatusFailed},
 		{"completed_to_reversing", repo.TransactionStatusCompleted, repo.TransactionStatusReversing},
@@ -197,7 +198,6 @@ func TestUpdateStatus(t *testing.T) {
 		to   repo.TransactionStatus
 	}{
 		{"pending_to_completed", repo.TransactionStatusPending, repo.TransactionStatusCompleted},
-		{"pending_to_failed", repo.TransactionStatusPending, repo.TransactionStatusFailed},
 		{"processing_to_pending", repo.TransactionStatusProcessing, repo.TransactionStatusPending},
 		{"completed_to_processing", repo.TransactionStatusCompleted, repo.TransactionStatusProcessing},
 		{"failed_to_pending", repo.TransactionStatusFailed, repo.TransactionStatusPending},

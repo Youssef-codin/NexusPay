@@ -6,7 +6,10 @@ type GetWalletRequest struct {
 	ID string `json:"id" validate:"required,uuid"`
 }
 
-type CreateWalletRequest struct{}
+type CreateWalletRequest struct {
+	UserID  string `json:"user_id"`
+	Balance int64  `json:"balance_in_piastres"`
+}
 
 type TopUpRequest struct {
 	Amount      int64  `json:"amount_in_piastres" validate:"min=1000"`

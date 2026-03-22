@@ -30,12 +30,12 @@ test-unit:
 
 [group('test')]
 test-integration:
-    go test ./... -tags=integration -run '_Integration$' -v -p 1
+    go test ./... tests/... -tags=integration -run '_Integration$' -v -p 1
 
 [group('test')]
 coverage:
     mkdir -p docs
-    go test -tags=integration -coverprofile=coverage.out ./...
+    go test -tags=integration -coverprofile=coverage.out ./... tests/...
     go tool cover -html=coverage.out -o docs/coverage.html
 
 # ── Code Quality ───────────────────────────────────────────────────────────────

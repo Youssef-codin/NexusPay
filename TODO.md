@@ -30,4 +30,8 @@
 - [x] Store `transaction_id` in Stripe metadata so you can look it up in the webhook
 - [x] Add time out to processPayment
 - [ ] implement rest of stripe payment service
-- [ ] Add an integration test that tests our transaction logic
+- [x] Add an integration test that tests our transaction logic
+
+## bugs
+
+- [x] add wallet creation to registering

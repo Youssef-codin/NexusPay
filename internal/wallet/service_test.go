@@ -20,7 +20,7 @@ import (
 
 func withUserID(ctx context.Context, userID string) context.Context {
 	ja := jwtauth.New("HS256", []byte("test-secret"), nil)
-	token, _, _ := ja.Encode(map[string]interface{}{"sub": userID})
+	token, _, _ := ja.Encode(map[string]any{"sub": userID})
 	return jwtauth.NewContext(ctx, token, nil)
 }
 
@@ -75,7 +75,12 @@ func (m *MockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row 
 	return nil
 }
 
-func (m *MockTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+func (m *MockTx) CopyFrom(
+	ctx context.Context,
+	tableName pgx.Identifier,
+	columnNames []string,
+	rowSrc pgx.CopyFromSource,
+) (int64, error) {
 	return 0, nil
 }
 
@@ -87,7 +92,10 @@ func (m *MockTx) LargeObjects() pgx.LargeObjects {
 	return pgx.LargeObjects{}
 }
 
-func (m *MockTx) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error) {
+func (m *MockTx) Prepare(
+	ctx context.Context,
+	name, sql string,
+) (*pgconn.StatementDescription, error) {
 	return nil, nil
 }
 
@@ -101,12 +109,23 @@ func (m *MockConn) Query(ctx context.Context, sql string, args ...any) (pgx.Rows
 	return nil, nil
 }
 func (m *MockConn) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row { return nil }
-func (m *MockConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+
+func (m *MockConn) CopyFrom(
+	ctx context.Context,
+	tableName pgx.Identifier,
+	columnNames []string,
+	rowSrc pgx.CopyFromSource,
+) (int64, error) {
 	return 0, nil
 }
 func (m *MockConn) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults { return nil }
-func (m *MockConn) LargeObjects() pgx.LargeObjects                               { return pgx.LargeObjects{} }
-func (m *MockConn) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error) {
+
+func (m *MockConn) LargeObjects() pgx.LargeObjects { return pgx.LargeObjects{} }
+
+func (m *MockConn) Prepare(
+	ctx context.Context,
+	name, sql string,
+) (*pgconn.StatementDescription, error) {
 	return nil, nil
 }
 func (m *MockConn) IsClosed() bool          { return false }
@@ -135,7 +154,10 @@ type MockwalletRepo struct {
 	mock.Mock
 }
 
-func (m *MockwalletRepo) CreateWallet(ctx context.Context, arg repo.CreateWalletParams) (repo.CreateWalletRow, error) {
+func (m *MockwalletRepo) CreateWallet(
+	ctx context.Context,
+	arg repo.CreateWalletParams,
+) (repo.CreateWalletRow, error) {
 	args := m.Called(ctx, arg)
 	return args.Get(0).(repo.CreateWalletRow), args.Error(1)
 }
@@ -145,17 +167,26 @@ func (m *MockwalletRepo) GetWalletById(ctx context.Context, id pgtype.UUID) (rep
 	return args.Get(0).(repo.Wallet), args.Error(1)
 }
 
-func (m *MockwalletRepo) GetWalletByUserId(ctx context.Context, userID pgtype.UUID) (repo.Wallet, error) {
+func (m *MockwalletRepo) GetWalletByUserId(
+	ctx context.Context,
+	userID pgtype.UUID,
+) (repo.Wallet, error) {
 	args := m.Called(ctx, userID)
 	return args.Get(0).(repo.Wallet), args.Error(1)
 }
 
-func (m *MockwalletRepo) DeductFromBalance(ctx context.Context, arg repo.DeductFromBalanceParams) (repo.Wallet, error) {
+func (m *MockwalletRepo) DeductFromBalance(
+	ctx context.Context,
+	arg repo.DeductFromBalanceParams,
+) (repo.Wallet, error) {
 	args := m.Called(ctx, arg)
 	return args.Get(0).(repo.Wallet), args.Error(1)
 }
 
-func (m *MockwalletRepo) AddToBalance(ctx context.Context, arg repo.AddToBalanceParams) (repo.Wallet, error) {
+func (m *MockwalletRepo) AddToBalance(
+	ctx context.Context,
+	arg repo.AddToBalanceParams,
+) (repo.Wallet, error) {
 	args := m.Called(ctx, arg)
 	return args.Get(0).(repo.Wallet), args.Error(1)
 }
@@ -164,17 +195,26 @@ type MockTransactionsSvc struct {
 	mock.Mock
 }
 
-func (m *MockTransactionsSvc) GetById(ctx context.Context, req transactions.GetByIdRequest) (transactions.GetTransactionResponse, error) {
+func (m *MockTransactionsSvc) GetById(
+	ctx context.Context,
+	req transactions.GetByIdRequest,
+) (transactions.GetTransactionResponse, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(transactions.GetTransactionResponse), args.Error(1)
 }
 
-func (m *MockTransactionsSvc) CreateTransaction(ctx context.Context, req transactions.CreateTransactionRequest) (transactions.CreateTransactionResponse, error) {
+func (m *MockTransactionsSvc) CreateTransaction(
+	ctx context.Context,
+	req transactions.CreateTransactionRequest,
+) (transactions.CreateTransactionResponse, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(transactions.CreateTransactionResponse), args.Error(1)
 }
 
-func (m *MockTransactionsSvc) UpdateStatus(ctx context.Context, req transactions.UpdateTransactionRequest) error {
+func (m *MockTransactionsSvc) UpdateStatus(
+	ctx context.Context,
+	req transactions.UpdateTransactionRequest,
+) error {
 	args := m.Called(ctx, req)
 	return args.Error(0)
 }
@@ -183,17 +223,26 @@ type MockPaymentSvc struct {
 	mock.Mock
 }
 
-func (m *MockPaymentSvc) ProcessPayment(ctx context.Context, req payment.ProcessPaymentRequest) (payment.ProcessPaymentResponse, error) {
+func (m *MockPaymentSvc) ProcessPayment(
+	ctx context.Context,
+	req payment.ProcessPaymentRequest,
+) (payment.ProcessPaymentResponse, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(payment.ProcessPaymentResponse), args.Error(1)
 }
 
-func (m *MockPaymentSvc) Refund(ctx context.Context, req payment.RefundRequest) (payment.RefundResponse, error) {
+func (m *MockPaymentSvc) Refund(
+	ctx context.Context,
+	req payment.RefundRequest,
+) (payment.RefundResponse, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(payment.RefundResponse), args.Error(1)
 }
 
-func (m *MockPaymentSvc) CancelPayment(ctx context.Context, req payment.CancelPaymentRequest) (payment.CancelPaymentResponse, error) {
+func (m *MockPaymentSvc) CancelPayment(
+	ctx context.Context,
+	req payment.CancelPaymentRequest,
+) (payment.CancelPaymentResponse, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(payment.CancelPaymentResponse), args.Error(1)
 }
@@ -235,7 +284,8 @@ func TestTopUp(t *testing.T) {
 			name:   "wallet_not_found",
 			amount: 1000,
 			setupMocks: func(mr *MockwalletRepo, mt *MockTransactionsSvc, mp *MockPaymentSvc) {
-				mr.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(repo.Wallet{}, pgx.ErrNoRows)
+				mr.On("GetWalletByUserId", mock.Anything, mock.Anything).
+					Return(repo.Wallet{}, pgx.ErrNoRows)
 			},
 			expectedErr:  ErrWalletNotFound,
 			expectStatus: "",
@@ -251,7 +301,8 @@ func TestTopUp(t *testing.T) {
 					CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 					UpdatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 				}, nil)
-				mt.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{}, errors.New("db error"))
+				mt.On("CreateTransaction", mock.Anything, mock.Anything).
+					Return(transactions.CreateTransactionResponse{}, errors.New("db error"))
 			},
 			expectedErr:  errors.New("db error"),
 			expectStatus: "",
@@ -267,11 +318,13 @@ func TestTopUp(t *testing.T) {
 					CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 					UpdatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 				}, nil)
-				mt.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{
-					ID:     uuid.New().String(),
-					Status: repo.TransactionStatusPending,
-				}, nil)
-				mp.On("ProcessPayment", mock.Anything, mock.Anything).Return(payment.ProcessPaymentResponse{}, errors.New("payment failed"))
+				mt.On("CreateTransaction", mock.Anything, mock.Anything).
+					Return(transactions.CreateTransactionResponse{
+						ID:     uuid.New().String(),
+						Status: repo.TransactionStatusPending,
+					}, nil)
+				mp.On("ProcessPayment", mock.Anything, mock.Anything).
+					Return(payment.ProcessPaymentResponse{}, errors.New("payment failed"))
 				mt.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil)
 			},
 			expectedErr:  errors.New("payment failed"),
@@ -288,15 +341,17 @@ func TestTopUp(t *testing.T) {
 					CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 					UpdatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 				}, nil)
-				mt.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{
-					ID:     uuid.New().String(),
-					Status: repo.TransactionStatusPending,
-				}, nil)
-				mp.On("ProcessPayment", mock.Anything, mock.Anything).Return(payment.ProcessPaymentResponse{
-					ProviderPaymentID: "pi_test123",
-					ClientSecret:      "pi_test123_secret",
-					Status:            payment.PaymentStatusPending,
-				}, nil)
+				mt.On("CreateTransaction", mock.Anything, mock.Anything).
+					Return(transactions.CreateTransactionResponse{
+						ID:     uuid.New().String(),
+						Status: repo.TransactionStatusPending,
+					}, nil)
+				mp.On("ProcessPayment", mock.Anything, mock.Anything).
+					Return(payment.ProcessPaymentResponse{
+						ProviderPaymentID: "pi_test123",
+						ClientSecret:      "pi_test123_secret",
+						Status:            payment.PaymentStatusPending,
+					}, nil)
 			},
 			expectedErr:  nil,
 			expectStatus: string(payment.PaymentStatusPending),
@@ -367,7 +422,8 @@ func TestGetById(t *testing.T) {
 
 	t.Run("wallet_not_found", func(t *testing.T) {
 		mockRepo := new(MockwalletRepo)
-		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).Return(repo.Wallet{}, pgx.ErrNoRows)
+		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, pgx.ErrNoRows)
 
 		svc := &Service{repo: mockRepo}
 		_, err := svc.GetById(ctx, GetWalletRequest{ID: uuid.New().String()})
@@ -378,7 +434,8 @@ func TestGetById(t *testing.T) {
 
 	t.Run("database_error", func(t *testing.T) {
 		mockRepo := new(MockwalletRepo)
-		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).Return(repo.Wallet{}, errors.New("connection error"))
+		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, errors.New("connection error"))
 
 		svc := &Service{repo: mockRepo}
 		_, err := svc.GetById(ctx, GetWalletRequest{ID: uuid.New().String()})
@@ -416,7 +473,8 @@ func TestGetByUserId(t *testing.T) {
 
 	t.Run("wallet_not_found", func(t *testing.T) {
 		mockRepo := new(MockwalletRepo)
-		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(repo.Wallet{}, pgx.ErrNoRows)
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, pgx.ErrNoRows)
 
 		svc := &Service{repo: mockRepo}
 		_, err := svc.GetByUserId(ctx)
@@ -435,7 +493,8 @@ func TestCreateWallet(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockRepo := new(MockwalletRepo)
 
-		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(repo.Wallet{}, pgx.ErrNoRows)
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, pgx.ErrNoRows)
 		mockRepo.On("CreateWallet", mock.Anything, mock.Anything).Return(repo.CreateWalletRow{
 			ID:        pgtype.UUID{Bytes: walletID, Valid: true},
 			UserID:    pgtype.UUID{Bytes: userID, Valid: true},
@@ -470,8 +529,10 @@ func TestCreateWallet(t *testing.T) {
 
 	t.Run("create_database_error", func(t *testing.T) {
 		mockRepo := new(MockwalletRepo)
-		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(repo.Wallet{}, pgx.ErrNoRows)
-		mockRepo.On("CreateWallet", mock.Anything, mock.Anything).Return(repo.CreateWalletRow{}, errors.New("db error"))
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, pgx.ErrNoRows)
+		mockRepo.On("CreateWallet", mock.Anything, mock.Anything).
+			Return(repo.CreateWalletRow{}, errors.New("db error"))
 
 		svc := &Service{repo: mockRepo}
 		_, err := svc.CreateWallet(ctx, CreateWalletRequest{})
@@ -547,7 +608,8 @@ func TestDeductFromBalance(t *testing.T) {
 		mockTx := &MockTx{}
 
 		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
-		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(repo.Wallet{}, pgx.ErrNoRows)
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, pgx.ErrNoRows)
 
 		svc := &Service{
 			txManager: mockTxManager,
@@ -563,7 +625,8 @@ func TestDeductFromBalance(t *testing.T) {
 	t.Run("start_tx_fails", func(t *testing.T) {
 		mockTxManager := new(MockTxManager)
 
-		mockTxManager.On("StartTx", mock.Anything).Return(ctx, nil, errors.New("failed to start tx"))
+		mockTxManager.On("StartTx", mock.Anything).
+			Return(ctx, nil, errors.New("failed to start tx"))
 
 		svc := &Service{
 			txManager: mockTxManager,
@@ -617,7 +680,8 @@ func TestAddToWallet(t *testing.T) {
 
 	t.Run("wallet_not_found", func(t *testing.T) {
 		mockRepo := new(MockwalletRepo)
-		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).Return(repo.Wallet{}, pgx.ErrNoRows)
+		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, pgx.ErrNoRows)
 
 		svc := &Service{repo: mockRepo}
 		_, err := svc.AddToWallet(ctx, AddToWalletRequest{

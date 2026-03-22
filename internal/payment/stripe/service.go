@@ -41,7 +41,8 @@ func (svc *Service) ProcessPayment(
 			"transaction_id": req.TransactionID,
 		},
 		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
-			Enabled: new(true),
+			Enabled:        new(true),
+			AllowRedirects: stripe.String("never"),
 		},
 	}
 
@@ -70,7 +71,17 @@ func (svc *Service) ProcessPayment(
 		}
 
 		// non-timeout error, don't retry
-		slog.Error("stripe payment failed", "error", err)
+		var stripeErr *stripe.Error
+		if errors.As(err, &stripeErr) {
+			slog.Error("stripe payment failed",
+				"error", err,
+				"stripe_error_type", stripeErr.Type,
+				"stripe_error_code", stripeErr.Code,
+				"amount", req.Amount,
+			)
+		} else {
+			slog.Error("stripe payment failed", "error", err, "amount", req.Amount)
+		}
 		return payment.ProcessPaymentResponse{}, ErrPaymentFailed
 	}
 

@@ -61,22 +61,22 @@ func (app *application) mount() http.Handler {
 
 	UserCache := redisDb.NewUsers(app.redis)
 
+	PaymentService := stripe.NewService(app.config.stripe.apiKey)
+
+	TransactionRepo := transactions.NewTransactionRepo(app.db)
+	TransactionsService := transactions.NewService(TransactionRepo)
+
+	WalletRepo := wallet.NewWalletRepo(app.db)
+	WalletService := wallet.NewService(app.db, WalletRepo, TransactionsService, PaymentService)
+	WalletController := wallet.NewController(WalletService)
+
 	AuthRepo := auth.NewAuthRepo(app.db)
-	AuthService := auth.NewService(AuthRepo, UserCache, authenticator)
+	AuthService := auth.NewService(app.db, AuthRepo, UserCache, authenticator, WalletService)
 	AuthController := auth.NewController(AuthService)
 
 	UserRepo := users.NewUserRepo(app.db)
 	UserService := users.NewService(UserRepo, UserCache)
 	UserController := users.NewController(UserService)
-
-	TransactionRepo := transactions.NewTransactionRepo(app.db)
-	TransactionsService := transactions.NewService(TransactionRepo)
-
-	PaymentService := stripe.NewService(app.config.stripe.apiKey)
-
-	WalletRepo := wallet.NewWalletRepo(app.db)
-	WalletService := wallet.NewService(app.db, WalletRepo, TransactionsService, PaymentService)
-	WalletController := wallet.NewController(WalletService)
 
 	WebhookService := stripe.NewWebhookService(app.db, WalletService, TransactionsService)
 	WebhookController := stripe.NewWebhookController(

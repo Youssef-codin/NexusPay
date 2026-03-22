@@ -115,9 +115,13 @@ func (svc *Service) CreateWallet(
 	ctx context.Context,
 	req CreateWalletRequest,
 ) (CreateWalletResponse, error) {
-	parsedId, _ := uuid.Parse(req.UserID)
+	id, err := api.GetTokenUserID(ctx)
+	if err != nil {
+		return CreateWalletResponse{}, err
+	}
+	parsedId, _ := uuid.Parse(id)
 
-	_, err := svc.repo.GetWalletByUserId(ctx, pgtype.UUID{
+	_, err = svc.repo.GetWalletByUserId(ctx, pgtype.UUID{
 		Bytes: parsedId,
 		Valid: true,
 	})
@@ -135,7 +139,6 @@ func (svc *Service) CreateWallet(
 			Bytes: parsedId,
 			Valid: true,
 		},
-		Balance: 0,
 	})
 
 	if err != nil {
@@ -293,7 +296,6 @@ func (svc *Service) AddToWallet(
 		}
 		return AddToWalletResponse{}, err
 	}
-
 	txCtx, tx, err := svc.txManager.StartTx(ctx)
 	if err != nil {
 		return AddToWalletResponse{}, err
