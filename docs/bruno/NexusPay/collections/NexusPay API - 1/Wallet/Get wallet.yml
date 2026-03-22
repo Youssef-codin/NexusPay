@@ -1,13 +1,13 @@
 info:
-  name: Test authentication
+  name: Get wallet
   type: http
-  seq: 4
+  seq: 1
   tags:
-    - Authentication
+    - Wallet
 
 http:
   method: GET
-  url: "{{baseUrl}}/users/test"
+  url: "{{baseUrl}}/wallet/"
   auth:
     type: bearer
     token: "{{token}}"
@@ -20,9 +20,9 @@ settings:
 
 examples:
   - name: 200 Response
-    description: Authentication successful, returns token claims
+    description: Wallet retrieved successfully
     request:
-      url: "{{baseUrl}}/users/test"
+      url: "{{baseUrl}}/wallet/"
       method: GET
     response:
       status: 200
@@ -34,14 +34,15 @@ examples:
         type: json
         data: |-
           {
-            "id": "123e4567-e89b-12d3-a456-426614174000",
-            "exp": 1705317600,
-            "iat": 1704712800
+            "id": "123e4567-e89b-12d3-a456-426614174001",
+            "user_id": "123e4567-e89b-12d3-a456-426614174000",
+            "balance": 100000,
+            "created_at": "2024-01-15T10:30:00Z"
           }
   - name: 401 Response
     description: Unauthorized - missing or invalid token
     request:
-      url: "{{baseUrl}}/users/test"
+      url: "{{baseUrl}}/wallet/"
       method: GET
     response:
       status: 401

@@ -1,8 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TYPE transaction_type AS ENUM ('debit', 'credit');
-CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed');
-CREATE TYPE scheduled_transfer_status AS ENUM ('pending', 'processing', 'completed', 'cancelled', 'failed');
+CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed', 'reversing');
 CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed');
 
 CREATE TABLE users (
@@ -46,8 +45,10 @@ CREATE TABLE transactions (
     amount      BIGINT NOT NULL CHECK (amount > 0),
     type        transaction_type NOT NULL,
     status      transaction_status NOT NULL DEFAULT 'pending',
+    description TEXT DEFAULT NULL,
     transfer_id UUID REFERENCES transfers(id) DEFERRABLE INITIALLY DEFERRED,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at  TIMESTAMPTZ
 );
 
@@ -122,7 +123,6 @@ DROP TABLE IF EXISTS wallets;
 DROP TABLE IF EXISTS users;
 
 DROP TYPE IF EXISTS transfer_status;
-DROP TYPE IF EXISTS scheduled_transfer_status;
 DROP TYPE IF EXISTS transaction_status;
 DROP TYPE IF EXISTS transaction_type;
 -- +goose StatementEnd

@@ -21,6 +21,18 @@ test:
     go test ./...
 
 [group('test')]
+testv:
+    go test -v ./...
+
+[group('test')]
+test-unit:
+    go test ./... -run '^Test[^_]+$' -v
+
+[group('test')]
+test-integration:
+    go test ./... -tags=integration -run '_Integration$' -v -p 1
+
+[group('test')]
 coverage:
     mkdir -p docs
     go test -tags=integration -coverprofile=coverage.out ./...

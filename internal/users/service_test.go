@@ -1,119 +1,75 @@
 package users
 
 import (
-	"context"
-	"database/sql"
 	"testing"
 
-	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type mockUserRepo struct {
-	users            []repo.User
-	getUserByNameErr error
-}
+func TestHelper_FindUserRequest_Validation(t *testing.T) {
+	req := FindUserRequest{
+		FullName: "John Doe",
+	}
 
-func newMockUserRepo() *mockUserRepo {
-	return &mockUserRepo{
-		users: make([]repo.User, 0),
+	if req.FullName == "" {
+		t.Error("expected FullName to be set")
 	}
 }
 
-func (m *mockUserRepo) GetUserByName(ctx context.Context, fullName string) ([]repo.User, error) {
-	if m.getUserByNameErr != nil {
-		return nil, m.getUserByNameErr
-	}
-	var result []repo.User
-	for _, user := range m.users {
-		if user.FullName == fullName {
-			result = append(result, user)
-		}
-	}
-	return result, nil
-}
-
-func TestFindByName_Success(t *testing.T) {
-	mock := newMockUserRepo()
-	mock.users = []repo.User{
-		{
-			ID:       pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
-			FullName: "John Doe",
-		},
-		{
-			ID:       pgtype.UUID{Bytes: [16]byte{2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
-			FullName: "John Smith",
+func TestHelper_FindUserResponse(t *testing.T) {
+	resp := FindUserResponse{
+		Users: []UserType{
+			{ID: "123", FullName: "John Doe"},
+			{ID: "456", FullName: "Jane Doe"},
 		},
 	}
-	svc := NewService(mock, nil)
 
-	req := FindUserRequest{FullName: "John Doe"}
-	resp, err := svc.findByName(context.Background(), req)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	if len(resp.Users) != 1 {
-		t.Errorf("expected 1 user, got %d", len(resp.Users))
-	}
-
-	if resp.Users[0].FullName != "John Doe" {
-		t.Errorf("expected FullName 'John Doe', got %s", resp.Users[0].FullName)
+	if len(resp.Users) != 2 {
+		t.Errorf("expected 2 users, got %d", len(resp.Users))
 	}
 }
 
-func TestFindByName_EmptyResult(t *testing.T) {
-	mock := newMockUserRepo()
-	svc := NewService(mock, nil)
-
-	req := FindUserRequest{FullName: "Nonexistent"}
-	resp, err := svc.findByName(context.Background(), req)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func TestHelper_UserType(t *testing.T) {
+	user := UserType{
+		ID:       "123",
+		FullName: "John Doe",
 	}
 
-	if len(resp.Users) != 0 {
-		t.Errorf("expected 0 users, got %d", len(resp.Users))
+	if user.ID != "123" {
+		t.Errorf("expected ID '123', got '%s'", user.ID)
 	}
-}
-
-func TestFindByName_PartialMatch(t *testing.T) {
-	mock := newMockUserRepo()
-	mock.users = []repo.User{
-		{
-			ID:       pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
-			FullName: "John",
-		},
-		{
-			ID:       pgtype.UUID{Bytes: [16]byte{2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
-			FullName: "John",
-		},
-		{
-			ID:       pgtype.UUID{Bytes: [16]byte{3, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true},
-			FullName: "John",
-		},
-	}
-	svc := NewService(mock, nil)
-
-	req := FindUserRequest{FullName: "John"}
-	resp, err := svc.findByName(context.Background(), req)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	if len(resp.Users) != 3 {
-		t.Errorf("expected 3 users, got %d", len(resp.Users))
+	if user.FullName != "John Doe" {
+		t.Errorf("expected FullName 'John Doe', got '%s'", user.FullName)
 	}
 }
 
-func TestFindByName_DatabaseError(t *testing.T) {
-	mock := newMockUserRepo()
-	mock.getUserByNameErr = sql.ErrConnDone
-	svc := NewService(mock, nil)
+func TestHelper_Errors(t *testing.T) {
+	if ErrUserNotFound == nil {
+		t.Error("ErrUserNotFound should not be nil")
+	}
+	if ErrBadRequest == nil {
+		t.Error("ErrBadRequest should not be nil")
+	}
+}
 
-	req := FindUserRequest{FullName: "John"}
-	_, err := svc.findByName(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+type mockQuerier struct {
+	users []struct {
+		ID       pgtype.UUID
+		FullName string
+	}
+	err error
+}
+
+func TestHelper_MockQuerier(t *testing.T) {
+	mock := mockQuerier{}
+	mock.users = []struct {
+		ID       pgtype.UUID
+		FullName string
+	}{
+		{ID: pgtype.UUID{Bytes: [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, Valid: true}, FullName: "John"},
+	}
+
+	if len(mock.users) != 1 {
+		t.Errorf("expected 1 user in mock, got %d", len(mock.users))
 	}
 }

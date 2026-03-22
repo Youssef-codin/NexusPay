@@ -69,7 +69,6 @@ Nexus/
 ```sql
 CREATE TYPE transaction_type AS ENUM ('debit', 'credit');
 CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed');
-CREATE TYPE scheduled_transfer_status AS ENUM ('pending', 'processing', 'completed', 'cancelled', 'failed');
 CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed');
 
 CREATE TABLE users (

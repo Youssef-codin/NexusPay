@@ -12,22 +12,18 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO
-  users (
+INSERT INTO users (email,
+                   password,
+                   full_name,
+                   refresh_token,
+                   token_expires_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING
+    id,
     email,
-    password,
     full_name,
     refresh_token,
-    token_expires_at
-  )
-VALUES
-  ($1, $2, $3, $4, $5)
-RETURNING
-  id,
-  email,
-  full_name,
-  refresh_token,
-  created_at
+    created_at
 `
 
 type CreateUserParams struct {
@@ -66,8 +62,10 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at FROM users
-WHERE email = $1 AND deleted_at IS NULL
+SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+FROM users
+WHERE email = $1
+  AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -88,8 +86,10 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at FROM users 
-WHERE id = $1 AND deleted_at IS NULL
+SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+FROM users
+WHERE id = $1
+  AND deleted_at IS NULL FOR UPDATE
 `
 
 func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -110,8 +110,10 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 }
 
 const getUserByName = `-- name: GetUserByName :many
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at FROM users
-WHERE full_name % $1 AND deleted_at IS NULL
+SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+FROM users
+WHERE full_name % $1
+  AND deleted_at IS NULL
 ORDER BY similarity(full_name, $1) DESC
 `
 
@@ -146,8 +148,10 @@ func (q *Queries) GetUserByName(ctx context.Context, fullName string) ([]User, e
 }
 
 const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at FROM users
-WHERE refresh_token = $1 AND deleted_at IS NULL
+SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+FROM users
+WHERE refresh_token = $1
+  AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype.Text) (User, error) {
@@ -169,8 +173,10 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
 UPDATE users
-SET refresh_token = NULL, token_expires_at = NULL
-WHERE id = $1 AND deleted_at IS NULL
+SET refresh_token    = NULL,
+    token_expires_at = NULL
+WHERE id = $1
+  AND deleted_at IS NULL
 `
 
 func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error {
@@ -181,7 +187,8 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error 
 const softDeleteUser = `-- name: SoftDeleteUser :exec
 UPDATE users
 SET deleted_at = NOW()
-WHERE id = $1 AND deleted_at IS NULL
+WHERE id = $1
+  AND deleted_at IS NULL
 `
 
 func (q *Queries) SoftDeleteUser(ctx context.Context, id pgtype.UUID) error {
@@ -190,9 +197,11 @@ func (q *Queries) SoftDeleteUser(ctx context.Context, id pgtype.UUID) error {
 }
 
 const updateRefreshToken = `-- name: UpdateRefreshToken :exec
-UPDATE users 
-SET refresh_token = $2, token_expires_at = $3
-WHERE id = $1 AND deleted_at IS NULL
+UPDATE users
+SET refresh_token    = $2,
+    token_expires_at = $3
+WHERE id = $1
+  AND deleted_at IS NULL
 `
 
 type UpdateRefreshTokenParams struct {
@@ -208,8 +217,10 @@ func (q *Queries) UpdateRefreshToken(ctx context.Context, arg UpdateRefreshToken
 
 const updateUserDetails = `-- name: UpdateUserDetails :one
 UPDATE users
-SET full_name = $2, email = $3
-WHERE id = $1 AND deleted_at IS NULL
+SET full_name = $2,
+    email     = $3
+WHERE id = $1
+  AND deleted_at IS NULL
 RETURNING id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
 `
 

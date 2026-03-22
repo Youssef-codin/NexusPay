@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/Youssef-codin/NexusPay/internal/db"
 	"github.com/Youssef-codin/NexusPay/internal/utils/env"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -28,23 +29,31 @@ func main() {
 			),
 		},
 		secret: env.GetEnvVar("JWT_SECRET", "secretlol"),
+		stripe: stripeConfig{
+			apiKey:        env.GetEnvVar("STRIPE_SECRET_KEY", ""),
+			webhookSecret: env.GetEnvVar("STRIPE_WEBHOOK_SECRET", ""),
+		},
 	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+	}))
+	slog.SetDefault(logger)
+
+	pool, err := pgxpool.New(ctx, cfg.db.dsn)
+	if err != nil {
+		panic(err)
+	}
+	defer pool.Close()
+
+	logger.Info("Connected to db")
+
+	database := db.New(pool)
 
 	redisOpt, err := redis.ParseURL(cfg.redis.dsn)
 	if err != nil {
 		panic(err)
 	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
-
-	conn, err := pgx.Connect(ctx, cfg.db.dsn)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close(ctx)
-
-	logger.Info("Connected to db", "dsn", cfg.db.dsn)
 
 	rdb := redis.NewClient(redisOpt)
 	defer rdb.Close()
@@ -57,7 +66,7 @@ func main() {
 
 	api := application{
 		config:    cfg,
-		db:        conn,
+		db:        database,
 		redis:     rdb,
 		redisOpts: redisOpt,
 	}
