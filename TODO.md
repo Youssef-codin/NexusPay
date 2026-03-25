@@ -1,27 +1,37 @@
-# NexusPay Setup Todo
+# Stripe Top-Up Flow
 
-## Core Infrastructure
+## ~`POST /wallet/topup`~
 
-- [x] Project config (env loading, config struct)
-- [x] Database connection (PostgreSQL pool)
-- [x] Redis client setup
+- [x] Validate request body (amount in piastres, min value)
+- [x] Get wallet from DB using authenticated user ID
+- [x] Create a pending transaction in DB (type: `credit`, status: `pending`)
+- [x] Create Stripe Payment Intent (amount, currency: `egp`, metadata: `transaction_id`)
+- [x] Return `client_secret` and `transaction_id` to client
 
-## Router & Middleware
+## ~`POST /webhook/stripe`~
 
-- [x] Chi router init
-- [x] CORS
-- [x] Logger
-- [x] Recoverer
-- [x] Auth middleware (JWT validation)
-- [x] Rate limiting with httprate-redis
+- [x] Read raw request body
+- [x] Verify Stripe webhook signature using `stripe.ConstructEvent`
+- [x] Switch on event type:
+  - [x] `payment_intent.succeeded` → update transaction to `completed`, increment wallet balance
+  - [x] `payment_intent.payment_failed` → update transaction to `failed`
+- [x] Return 200 immediately (Stripe retries if it doesn't get 200)
 
-## Server
+## ~Queries Needed (sqlc)~
 
-- [x] Graceful shutdown
-- [x] Health check endpoint (`GET /health`)
+- [x] `CreateTransaction`
+- [x] `UpdateTransactionStatus`
+- [x] `GetTransactionByID`
+- [x] `IncrementWalletBalance`
 
-## Database
+## Misc
 
-- [x] sqlc setup + sqlc.yaml
-- [x] goose migrations wired (Makefile commands)
-- [x] setup redis client api
+- [x] Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to `.env`
+- [x] Store `transaction_id` in Stripe metadata so you can look it up in the webhook
+- [x] Add time out to processPayment
+- [ ] implement rest of stripe payment service
+- [x] Add an integration test that tests our transaction logic
+
+## bugs
+
+- [x] add wallet creation to registering

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Youssef-codin/NexusPay/internal/db"
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
 	"github.com/Youssef-codin/NexusPay/internal/security"
+	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,20 +34,26 @@ type IService interface {
 }
 
 type Service struct {
-	repo  authRepository
-	users *redisDb.Users
-	auth  *security.Authenticator
+	txManager db.TxManager
+	repo      authRepo
+	users     *redisDb.Users
+	auth      *security.Authenticator
+	wallet    wallet.IService
 }
 
 func NewService(
-	repo authRepository,
+	txManager db.TxManager,
+	repo authRepo,
 	users *redisDb.Users,
 	auth *security.Authenticator,
+	wallet wallet.IService,
 ) IService {
 	return &Service{
-		repo:  repo,
-		users: users,
-		auth:  auth,
+		txManager: txManager,
+		repo:      repo,
+		users:     users,
+		auth:      auth,
+		wallet:    wallet,
 	}
 }
 
@@ -94,7 +102,13 @@ func (svc *Service) login(ctx context.Context, req loginRequest) (loginResponse,
 }
 
 func (svc *Service) register(ctx context.Context, req registerRequest) (registerResponse, error) {
-	if _, err := svc.repo.GetUserByEmail(ctx, req.Email); err == nil {
+	txCtx, tx, err := svc.txManager.StartTx(ctx)
+	if err != nil {
+		return registerResponse{}, err
+	}
+	defer tx.Rollback(txCtx)
+
+	if _, err := svc.repo.GetUserByEmail(txCtx, req.Email); err == nil {
 		return registerResponse{}, ErrUserAlreadyExists
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return registerResponse{}, err
@@ -108,7 +122,7 @@ func (svc *Service) register(ctx context.Context, req registerRequest) (register
 	rawRefreshToken := svc.auth.MakeRawRefreshToken()
 	hashedRefreshToken := svc.auth.HashRefreshToken(rawRefreshToken)
 
-	user, err := svc.repo.CreateUser(ctx, repo.CreateUserParams{
+	user, err := svc.repo.CreateUser(txCtx, repo.CreateUserParams{
 		Email:    req.Email,
 		Password: hashedPass,
 		FullName: req.FullName,
@@ -126,9 +140,21 @@ func (svc *Service) register(ctx context.Context, req registerRequest) (register
 		return registerResponse{}, err
 	}
 
+	_, err = svc.wallet.CreateWallet(txCtx, wallet.CreateWalletRequest{
+		UserID: user.ID.String(),
+	})
+
+	if err != nil {
+		return registerResponse{}, err
+	}
+
 	jwtToken := svc.auth.MakeJWTToken(security.Claims{
 		ID: user.ID.String(),
 	})
+
+	if err := tx.Commit(txCtx); err != nil {
+		return registerResponse{}, err
+	}
 
 	return registerResponse{
 		FullName:     user.FullName,

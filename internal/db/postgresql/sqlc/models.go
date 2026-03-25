@@ -11,51 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type ScheduledTransferStatus string
-
-const (
-	ScheduledTransferStatusPending    ScheduledTransferStatus = "pending"
-	ScheduledTransferStatusProcessing ScheduledTransferStatus = "processing"
-	ScheduledTransferStatusCompleted  ScheduledTransferStatus = "completed"
-	ScheduledTransferStatusCancelled  ScheduledTransferStatus = "cancelled"
-	ScheduledTransferStatusFailed     ScheduledTransferStatus = "failed"
-)
-
-func (e *ScheduledTransferStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = ScheduledTransferStatus(s)
-	case string:
-		*e = ScheduledTransferStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for ScheduledTransferStatus: %T", src)
-	}
-	return nil
-}
-
-type NullScheduledTransferStatus struct {
-	ScheduledTransferStatus ScheduledTransferStatus `json:"scheduled_transfer_status"`
-	Valid                   bool                    `json:"valid"` // Valid is true if ScheduledTransferStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullScheduledTransferStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.ScheduledTransferStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.ScheduledTransferStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullScheduledTransferStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.ScheduledTransferStatus), nil
-}
-
 type TransactionStatus string
 
 const (
@@ -64,6 +19,7 @@ const (
 	TransactionStatusCompleted  TransactionStatus = "completed"
 	TransactionStatusFailed     TransactionStatus = "failed"
 	TransactionStatusReversed   TransactionStatus = "reversed"
+	TransactionStatusReversing  TransactionStatus = "reversing"
 )
 
 func (e *TransactionStatus) Scan(src interface{}) error {
@@ -195,14 +151,16 @@ type ScheduledTransfer struct {
 }
 
 type Transaction struct {
-	ID         pgtype.UUID        `json:"id"`
-	WalletID   pgtype.UUID        `json:"wallet_id"`
-	Amount     int64              `json:"amount"`
-	Type       TransactionType    `json:"type"`
-	Status     TransactionStatus  `json:"status"`
-	TransferID pgtype.UUID        `json:"transfer_id"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	ID          pgtype.UUID        `json:"id"`
+	WalletID    pgtype.UUID        `json:"wallet_id"`
+	Amount      int64              `json:"amount"`
+	Type        TransactionType    `json:"type"`
+	Status      TransactionStatus  `json:"status"`
+	Description pgtype.Text        `json:"description"`
+	TransferID  pgtype.UUID        `json:"transfer_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
 }
 
 type Transfer struct {

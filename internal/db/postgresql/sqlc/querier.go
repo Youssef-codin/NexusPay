@@ -11,14 +11,24 @@ import (
 )
 
 type Querier interface {
+	AddToBalance(ctx context.Context, arg AddToBalanceParams) (Wallet, error)
+	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (CreateTransactionRow, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	CreateWallet(ctx context.Context, arg CreateWalletParams) (CreateWalletRow, error)
+	DeductFromBalance(ctx context.Context, arg DeductFromBalanceParams) (Wallet, error)
+	GetTransactionById(ctx context.Context, id pgtype.UUID) (Transaction, error)
+	GetTransactionByTransferId(ctx context.Context, transferID pgtype.UUID) (Transaction, error)
+	GetTransactionsByWalletId(ctx context.Context, walletID pgtype.UUID) ([]Transaction, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserByName(ctx context.Context, fullName string) ([]User, error)
 	GetUserByRefreshToken(ctx context.Context, refreshToken pgtype.Text) (User, error)
+	GetWalletById(ctx context.Context, id pgtype.UUID) (Wallet, error)
+	GetWalletByUserId(ctx context.Context, userID pgtype.UUID) (Wallet, error)
 	RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error
 	SoftDeleteUser(ctx context.Context, id pgtype.UUID) error
 	UpdateRefreshToken(ctx context.Context, arg UpdateRefreshTokenParams) error
+	UpdateTransactionStatus(ctx context.Context, arg UpdateTransactionStatusParams) (Transaction, error)
 	UpdateUserDetails(ctx context.Context, arg UpdateUserDetailsParams) (User, error)
 }
 

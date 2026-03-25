@@ -2,10 +2,10 @@ package users
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
+	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -18,11 +18,11 @@ type IService interface {
 }
 
 type Service struct {
-	repo  userRepository
+	repo  userRepo
 	users *redisDb.Users
 }
 
-func NewService(repo userRepository, users *redisDb.Users) IService {
+func NewService(repo userRepo, users *redisDb.Users) IService {
 	return &Service{
 		repo:  repo,
 		users: users,
@@ -32,7 +32,7 @@ func NewService(repo userRepository, users *redisDb.Users) IService {
 func (svc *Service) findByName(ctx context.Context, req FindUserRequest) (FindUserResponse, error) {
 	users, err := svc.repo.GetUserByName(ctx, req.FullName)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return FindUserResponse{Users: []UserType{}}, nil
 		}
 		return FindUserResponse{}, err

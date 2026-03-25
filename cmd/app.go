@@ -12,18 +12,20 @@ import (
 	"time"
 
 	"github.com/Youssef-codin/NexusPay/internal/auth"
-	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
+	"github.com/Youssef-codin/NexusPay/internal/db"
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
+	"github.com/Youssef-codin/NexusPay/internal/payment/stripe"
 	"github.com/Youssef-codin/NexusPay/internal/security"
+	"github.com/Youssef-codin/NexusPay/internal/transactions"
 	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
+	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
 	httprateredis "github.com/go-chi/httprate-redis"
 	"github.com/go-chi/jwtauth/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,48 +41,48 @@ func (app *application) mount() http.Handler {
 		api.Error(w, "route not found", http.StatusNotFound)
 	})
 
-	// A good base middleware stack
 	rmain.Use(middleware.RequestID)
 	rmain.Use(middleware.RealIP)
 	rmain.Use(middleware.Logger)
 	rmain.Use(middleware.Recoverer)
 	rmain.Use(cors.Handler(cors.Options{
-		// AllowedOrigins:   []string{"https://foo.com"}, // Use this to allow specific origin hosts
-		AllowedOrigins: []string{"https://*", "http://*"},
-		// AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
+		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
-		MaxAge:           300, // Maximum value not ignored by any of major browsers
+		MaxAge:           300,
 	}))
 
-	// Set a timeout value on the request context (ctx), that will signal
-	// through ctx.Done() that the request has timed out and further
-	// processing should be stopped.
 	rmain.Use(middleware.Timeout(60 * time.Second))
 
 	const refreshTokenDuration = 7 * 24 * time.Hour
 	authenticator := security.NewAuthenticator(app.config.secret, refreshTokenDuration)
 
-	SQLCRepo := repo.New(app.db)
 	UserCache := redisDb.NewUsers(app.redis)
-	AuthService := auth.NewService(SQLCRepo, UserCache, authenticator)
+
+	PaymentService := stripe.NewService(app.config.stripe.apiKey)
+
+	TransactionRepo := transactions.NewTransactionRepo(app.db)
+	TransactionsService := transactions.NewService(TransactionRepo)
+
+	WalletRepo := wallet.NewWalletRepo(app.db)
+	WalletService := wallet.NewService(app.db, WalletRepo, TransactionsService, PaymentService)
+	WalletController := wallet.NewController(WalletService)
+
+	AuthRepo := auth.NewAuthRepo(app.db)
+	AuthService := auth.NewService(app.db, AuthRepo, UserCache, authenticator, WalletService)
 	AuthController := auth.NewController(AuthService)
 
-	rmain.Group(func(rprotected chi.Router) {
-		rprotected.Use(jwtauth.Verifier(authenticator.TokenAuth))
-		rprotected.Use(authenticator.AuthHandler())
-		rprotected.Use(api.NewUserLimiter(15, host, uint16(port)))
+	UserRepo := users.NewUserRepo(app.db)
+	UserService := users.NewService(UserRepo, UserCache)
+	UserController := users.NewController(UserService)
 
-		rprotected.Get("/auth/test", api.Wrap(AuthController.TestAuth))
-		rprotected.Post("/auth/logout", api.Wrap(AuthController.LogoutController))
-
-		UserService := users.NewService(SQLCRepo, UserCache)
-		UserController := users.NewController(UserService)
-
-		rprotected.Get("/users", api.Wrap(UserController.SearchByNameController))
-	})
+	WebhookService := stripe.NewWebhookService(app.db, WalletService, TransactionsService)
+	WebhookController := stripe.NewWebhookController(
+		app.config.stripe.webhookSecret,
+		WebhookService,
+	)
 
 	rmain.Group(func(rpublic chi.Router) {
 		rpublic.Use(httprate.Limit(
@@ -88,8 +90,7 @@ func (app *application) mount() http.Handler {
 			time.Minute,
 			httprate.WithKeyByIP(),
 			httprateredis.WithRedisLimitCounter(&httprateredis.Config{
-				Host: host,
-				Port: uint16(port),
+				Client: app.redis,
 			}),
 		))
 
@@ -101,6 +102,38 @@ func (app *application) mount() http.Handler {
 			rauth.Post("/register", api.Wrap(AuthController.RegisterController))
 			rauth.Post("/login", api.Wrap(AuthController.LoginController))
 			rauth.Post("/refresh", api.Wrap(AuthController.RefreshController))
+		})
+	})
+
+	rmain.Group(func(rprotected chi.Router) {
+		rprotected.Use(jwtauth.Verifier(authenticator.TokenAuth))
+		rprotected.Use(authenticator.AuthHandler())
+		rprotected.Use(api.NewUserLimiter(50, app.redis))
+
+		rprotected.Route("/users", func(r chi.Router) {
+			r.Get("/test", api.Wrap(AuthController.TestAuth))
+			r.Post("/logout", api.Wrap(AuthController.LogoutController))
+			r.Get("/", api.Wrap(UserController.SearchByNameController))
+		})
+
+		rprotected.Route("/wallet", func(r chi.Router) {
+			r.Get("/", api.Wrap(WalletController.GetByUserId))
+			r.Patch("/", api.Wrap(WalletController.TopUp))
+		})
+	})
+
+	rmain.Group(func(rwebhooks chi.Router) {
+		rwebhooks.Use(httprate.Limit(
+			100,
+			time.Minute,
+			httprate.WithKeyByIP(),
+			httprateredis.WithRedisLimitCounter(&httprateredis.Config{
+				Host: host,
+				Port: uint16(port),
+			}),
+		))
+		rwebhooks.Route("/webhook", func(r chi.Router) {
+			r.Post("/stripe", api.Wrap(WebhookController.Handle))
 		})
 	})
 
@@ -117,7 +150,6 @@ func (app *application) run(h http.Handler) error {
 		IdleTimeout:  time.Minute,
 	}
 
-	//graceful shutdown
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("Server error: %v", err)
@@ -137,9 +169,14 @@ func (app *application) run(h http.Handler) error {
 
 type application struct {
 	config    config
-	db        *pgx.Conn
+	db        *db.DB
 	redis     *redis.Client
 	redisOpts *redis.Options
+}
+
+type stripeConfig struct {
+	apiKey        string
+	webhookSecret string
 }
 
 type config struct {
@@ -147,6 +184,7 @@ type config struct {
 	db     dbConfig
 	redis  dbConfig
 	secret string
+	stripe stripeConfig
 }
 
 type dbConfig struct {

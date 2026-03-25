@@ -7,7 +7,7 @@ info:
 
 http:
   method: POST
-  url: "{{baseUrl}}/auth/logout"
+  url: "{{baseUrl}}/users/logout"
   auth:
     type: bearer
     token: "{{token}}"
@@ -27,7 +27,7 @@ examples:
   - name: 200 Response
     description: Logout successful
     request:
-      url: "{{baseUrl}}/auth/logout"
+      url: "{{baseUrl}}/users/logout"
       method: POST
     response:
       status: 200
@@ -44,7 +44,7 @@ examples:
   - name: 401 Response
     description: Unauthorized - missing or invalid token
     request:
-      url: "{{baseUrl}}/auth/logout"
+      url: "{{baseUrl}}/users/logout"
       method: POST
     response:
       status: 401

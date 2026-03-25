@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
+	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
 )
 
 type controller struct {
@@ -22,7 +23,7 @@ func (c *controller) SearchByNameController(w http.ResponseWriter, req *http.Req
 		FullName: req.URL.Query().Get("name"),
 	}
 
-	if err := api.Validate(nameReq); err != nil {
+	if err := validator.Validate(nameReq); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Bad Request")
 	}
 
