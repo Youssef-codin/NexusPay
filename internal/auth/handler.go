@@ -18,7 +18,7 @@ func NewHandler(service IService) *handler {
 	}
 }
 
-func (c *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
 	_, claims, err := jwtauth.FromContext(req.Context())
 	if err != nil {
 		return api.WrappedError(http.StatusUnauthorized, "unauthorized")
@@ -27,14 +27,14 @@ func (c *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
 	return nil
 }
 
-func (c *handler) LoginController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) LoginController(w http.ResponseWriter, req *http.Request) error {
 	var loginReq loginRequest
 
 	if err := api.Read(req, &loginReq); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := c.svc.login(req.Context(), loginReq)
+	response, err := h.svc.login(req.Context(), loginReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest):
@@ -50,14 +50,14 @@ func (c *handler) LoginController(w http.ResponseWriter, req *http.Request) erro
 	return nil
 }
 
-func (c *handler) RegisterController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) RegisterController(w http.ResponseWriter, req *http.Request) error {
 	var registerReq registerRequest
 
 	if err := api.Read(req, &registerReq); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := c.svc.register(req.Context(), registerReq)
+	response, err := h.svc.register(req.Context(), registerReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest), errors.Is(err, ErrPasswordTooLong):
@@ -73,14 +73,14 @@ func (c *handler) RegisterController(w http.ResponseWriter, req *http.Request) e
 	return nil
 }
 
-func (c *handler) RefreshController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) RefreshController(w http.ResponseWriter, req *http.Request) error {
 	var refreshReq refreshRequest
 
 	if err := api.Read(req, &refreshReq); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := c.svc.refreshToken(req.Context(), refreshReq)
+	response, err := h.svc.refreshToken(req.Context(), refreshReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):
@@ -95,8 +95,8 @@ func (c *handler) RefreshController(w http.ResponseWriter, req *http.Request) er
 	return nil
 }
 
-func (c *handler) LogoutController(w http.ResponseWriter, req *http.Request) error {
-	err := c.svc.logout(req.Context())
+func (h *handler) LogoutController(w http.ResponseWriter, req *http.Request) error {
+	err := h.svc.logout(req.Context())
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):

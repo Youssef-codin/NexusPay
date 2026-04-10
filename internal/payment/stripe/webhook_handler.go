@@ -29,7 +29,7 @@ func NewWebhookHandler(endpointSecret string, service IService) *handler {
 	}
 }
 
-func (c *handler) Handle(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) Handle(w http.ResponseWriter, req *http.Request) error {
 	const maxBodyBytes = int64(65536)
 
 	req.Body = http.MaxBytesReader(w, req.Body, maxBodyBytes)
@@ -43,7 +43,7 @@ func (c *handler) Handle(w http.ResponseWriter, req *http.Request) error {
 	event, err := webhook.ConstructEvent(
 		payload,
 		req.Header.Get("Stripe-Signature"),
-		c.endpointSecret,
+		h.endpointSecret,
 	)
 	if err != nil {
 		slog.Error("Webhook signature verification failed", "error", err)
@@ -60,21 +60,21 @@ func (c *handler) Handle(w http.ResponseWriter, req *http.Request) error {
 
 	switch event.Type {
 	case "payment_intent.succeeded":
-		err := c.service.HandlePaymentSucceeded(req.Context(), HandlePaymentSucceededRequest{
+		err := h.service.HandlePaymentSucceeded(req.Context(), HandlePaymentSucceededRequest{
 			TransactionID: transactionID,
 		})
 		if err != nil {
 			slog.Error("Failed to handle payment succeeded", "error", err, "transaction_id", transactionID)
 		}
 	case "payment_intent.payment_failed":
-		err := c.service.HandlePaymentFailed(req.Context(), HandlePaymentFailedRequest{
+		err := h.service.HandlePaymentFailed(req.Context(), HandlePaymentFailedRequest{
 			TransactionID: transactionID,
 		})
 		if err != nil {
 			slog.Error("Failed to handle payment failed", "error", err, "transaction_id", transactionID)
 		}
 	case "payment_intent.canceled":
-		err := c.service.HandlePaymentCanceled(req.Context(), HandlePaymentCanceledRequest{
+		err := h.service.HandlePaymentCanceled(req.Context(), HandlePaymentCanceledRequest{
 			TransactionID: transactionID,
 		})
 		if err != nil {

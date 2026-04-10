@@ -19,7 +19,7 @@ type transfersRepo interface {
 		arg repo.UpdateTransferWithTransactionIdParams,
 	) (repo.Transfer, error)
 	GetTransferById(ctx context.Context, id pgtype.UUID) (repo.Transfer, error)
-	GetTransferByWalletId(ctx context.Context, toWalletID pgtype.UUID) (repo.Transfer, error)
+	GetTransfersByWalletId(ctx context.Context, toWalletID pgtype.UUID) ([]repo.Transfer, error)
 }
 
 type TransfersRepo struct {
@@ -59,9 +59,9 @@ func (r *TransfersRepo) GetTransferById(
 	return r.db.GetDBTX(ctx).GetTransferById(ctx, id)
 }
 
-func (r *TransfersRepo) GetTransferByWalletId(
+func (r *TransfersRepo) GetTransfersByWalletId(
 	ctx context.Context,
-	toWalletID pgtype.UUID,
-) (repo.Transfer, error) {
-	return r.db.GetDBTX(ctx).GetTransferByWalletId(ctx, toWalletID)
+	walletID pgtype.UUID,
+) ([]repo.Transfer, error) {
+	return r.db.GetDBTX(ctx).GetTranfserBySentWalletId(ctx, walletID)
 }

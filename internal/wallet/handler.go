@@ -17,8 +17,8 @@ func NewHandler(service IService) *handler {
 	}
 }
 
-func (c *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
-	res, err := c.svc.GetByUserId(req.Context())
+func (h *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
+	res, err := h.svc.GetByUserId(req.Context())
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrWalletNotFound):
@@ -31,14 +31,14 @@ func (c *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
 	return nil
 }
 
-func (c *handler) TopUp(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) TopUp(w http.ResponseWriter, req *http.Request) error {
 	var walletReq TopUpRequest
 
 	if err := api.Read(req, &walletReq); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Bad Request")
 	}
 
-	wallet, err := c.svc.TopUp(req.Context(), walletReq)
+	wallet, err := h.svc.TopUp(req.Context(), walletReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrWalletNotFound):

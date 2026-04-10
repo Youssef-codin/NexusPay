@@ -7,6 +7,8 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/db"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/Youssef-codin/NexusPay/internal/wallet"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
@@ -50,12 +52,35 @@ func (s *Service) CreateTransfer(
 	req CreateTransferRequest,
 ) (res CreateTransferResponse, err error) {
 
+	return res, err
 }
 
-func (s *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDResponse, err error) {
+func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDResponse, err error) {
 	id, err := api.GetTokenUserID(ctx)
 	if err != nil {
 		return GetTransfersByIDResponse{}, err
 	}
+	ctxId, _ := uuid.Parse(id)
 
+	transfers, err := svc.repo.GetTransfersByWalletId(ctx, pgtype.UUID{
+		Bytes: ctxId,
+		Valid: true,
+	})
+
+	dtoTransfers := []TransferResponse{}
+
+	for _, t := range transfers {
+		dtoTransfers = append(dtoTransfers, TransferResponse{
+			ID:        t.ID.String(),
+			Amount:    t.Amount,
+			Status:    t.Status,
+			Note:      t.Note.String,
+			CreatedAt: t.CreatedAt.Time,
+		})
+	}
+
+	return GetTransfersByIDResponse{
+		FromWalletID: ctxId.String(),
+		Transfers:    dtoTransfers,
+	}, nil
 }

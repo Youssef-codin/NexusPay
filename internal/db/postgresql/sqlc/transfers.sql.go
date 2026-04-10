@@ -71,6 +71,44 @@ func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) 
 	return i, err
 }
 
+const getTranfserBySentWalletId = `-- name: GetTranfserBySentWalletId :many
+SELECT id, from_wallet_id, to_wallet_id, amount, status, note, debit_transaction_id, credit_transaction_id, created_at, updated_at, deleted_at
+FROM transfers
+WHERE from_wallet_id = $1
+`
+
+func (q *Queries) GetTranfserBySentWalletId(ctx context.Context, fromWalletID pgtype.UUID) ([]Transfer, error) {
+	rows, err := q.db.Query(ctx, getTranfserBySentWalletId, fromWalletID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transfer
+	for rows.Next() {
+		var i Transfer
+		if err := rows.Scan(
+			&i.ID,
+			&i.FromWalletID,
+			&i.ToWalletID,
+			&i.Amount,
+			&i.Status,
+			&i.Note,
+			&i.DebitTransactionID,
+			&i.CreditTransactionID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTransferById = `-- name: GetTransferById :one
 SELECT id, from_wallet_id, to_wallet_id, amount, status, note, debit_transaction_id, credit_transaction_id, created_at, updated_at, deleted_at
 FROM transfers
@@ -79,32 +117,6 @@ WHERE id = $1
 
 func (q *Queries) GetTransferById(ctx context.Context, id pgtype.UUID) (Transfer, error) {
 	row := q.db.QueryRow(ctx, getTransferById, id)
-	var i Transfer
-	err := row.Scan(
-		&i.ID,
-		&i.FromWalletID,
-		&i.ToWalletID,
-		&i.Amount,
-		&i.Status,
-		&i.Note,
-		&i.DebitTransactionID,
-		&i.CreditTransactionID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getTransferByWalletId = `-- name: GetTransferByWalletId :one
-SELECT id, from_wallet_id, to_wallet_id, amount, status, note, debit_transaction_id, credit_transaction_id, created_at, updated_at, deleted_at
-FROM transfers
-WHERE to_wallet_id = $1
-   OR from_wallet_id = $1
-`
-
-func (q *Queries) GetTransferByWalletId(ctx context.Context, toWalletID pgtype.UUID) (Transfer, error) {
-	row := q.db.QueryRow(ctx, getTransferByWalletId, toWalletID)
 	var i Transfer
 	err := row.Scan(
 		&i.ID,

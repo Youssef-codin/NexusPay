@@ -38,16 +38,13 @@ type CreateTransferResponse struct {
 }
 
 type TransferResponse struct {
-	ID                  string              `json:"id"`
-	ToWalletID          string              `json:"to_wallet_id"`
-	Amount              int64               `json:"amount_in_piastres"`
-	Status              repo.TransferStatus `json:"status"`
-	Note                string              `json:"note"`
-	DebitTransactionID  *string             `json:"debit_transaction_id"`
-	CreditTransactionID *string             `json:"credit_transaction_id"`
-	CreatedAt           time.Time           `json:"created_at"`
-	UpdatedAt           time.Time           `json:"updated_at"`
-	DeletedAt           *time.Time          `json:"deleted_at"`
+	ID        string              `json:"id"`
+	Amount    int64               `json:"amount_in_piastres"`
+	Status    repo.TransferStatus `json:"status"`
+	Note      string              `json:"note"`
+	CreatedAt time.Time           `json:"created_at"`
+	UpdatedAt time.Time           `json:"updated_at"`
+	DeletedAt *time.Time          `json:"deleted_at"`
 }
 
 type GetTransfersByIDResponse struct {

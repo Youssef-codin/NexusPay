@@ -36,8 +36,7 @@ SELECT *
 FROM transfers
 WHERE id = $1;
 
--- name: GetTransferByWalletId :one
+-- name: GetTranfserBySentWalletId :many
 SELECT *
 FROM transfers
-WHERE to_wallet_id = $1
-   OR from_wallet_id = $1;
+WHERE from_wallet_id = $1;

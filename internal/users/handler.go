@@ -18,7 +18,7 @@ func NewHandler(service IService) *handler {
 	}
 }
 
-func (c *handler) SearchByNameController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) SearchByNameController(w http.ResponseWriter, req *http.Request) error {
 	nameReq := FindUserRequest{
 		FullName: req.URL.Query().Get("name"),
 	}
@@ -27,7 +27,7 @@ func (c *handler) SearchByNameController(w http.ResponseWriter, req *http.Reques
 		return api.WrappedError(http.StatusBadRequest, "Bad Request")
 	}
 
-	usersRes, err := c.svc.findByName(req.Context(), nameReq)
+	usersRes, err := h.svc.findByName(req.Context(), nameReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest):
