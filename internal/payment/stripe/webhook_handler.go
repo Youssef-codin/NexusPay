@@ -17,19 +17,19 @@ var (
 	ErrInvalidSignature = errors.New("invalid webhook signature")
 )
 
-type controller struct {
+type handler struct {
 	endpointSecret string
 	service        IService
 }
 
-func NewWebhookController(endpointSecret string, service IService) *controller {
-	return &controller{
+func NewWebhookHandler(endpointSecret string, service IService) *handler {
+	return &handler{
 		endpointSecret: endpointSecret,
 		service:        service,
 	}
 }
 
-func (c *controller) Handle(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) Handle(w http.ResponseWriter, req *http.Request) error {
 	const maxBodyBytes = int64(65536)
 
 	req.Body = http.MaxBytesReader(w, req.Body, maxBodyBytes)

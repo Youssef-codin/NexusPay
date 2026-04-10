@@ -424,17 +424,17 @@ func setupTestApp() (*testApp, error) {
 
 	walletRepo := wallet.NewWalletRepo(database)
 	walletService := wallet.NewService(database, walletRepo, transactionService, paymentService)
-	walletController := wallet.NewController(walletService)
+	walletHandler := wallet.NewHandler(walletService)
 
 	authService := auth.NewService(database, authRepo, userCache, authenticator, walletService)
-	authController := auth.NewController(authService)
+	authHandler := auth.NewHandler(authService)
 
 	userRepo := users.NewUserRepo(database)
 	userService := users.NewService(userRepo, userCache)
-	_ = users.NewController(userService)
+	_ = users.NewHandler(userService)
 
 	webhookService := stripe.NewWebhookService(database, walletService, transactionService)
-	webhookController := stripe.NewWebhookController(webhookSecret, webhookService)
+	webhookHandler := stripe.NewWebhookHandler(webhookSecret, webhookService)
 
 	r := chi.NewRouter()
 
@@ -454,8 +454,8 @@ func setupTestApp() (*testApp, error) {
 		})
 
 		rpublic.Route("/auth", func(r chi.Router) {
-			r.Post("/register", api.Wrap(authController.RegisterController))
-			r.Post("/login", api.Wrap(authController.LoginController))
+			r.Post("/register", api.Wrap(authHandler.RegisterController))
+			r.Post("/login", api.Wrap(authHandler.LoginController))
 		})
 	})
 
@@ -464,13 +464,13 @@ func setupTestApp() (*testApp, error) {
 		rprotected.Use(authenticator.AuthHandler())
 
 		rprotected.Route("/wallet", func(r chi.Router) {
-			r.Get("/", api.Wrap(walletController.GetByUserId))
-			r.Patch("/", api.Wrap(walletController.TopUp))
+			r.Get("/", api.Wrap(walletHandler.GetByUserId))
+			r.Patch("/", api.Wrap(walletHandler.TopUp))
 		})
 	})
 
 	r.Route("/webhook", func(r chi.Router) {
-		r.Post("/stripe", api.Wrap(webhookController.Handle))
+		r.Post("/stripe", api.Wrap(webhookHandler.Handle))
 	})
 
 	server := &http.Server{

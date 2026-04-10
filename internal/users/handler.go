@@ -8,17 +8,17 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
 )
 
-type controller struct {
+type handler struct {
 	svc IService
 }
 
-func NewController(service IService) *controller {
-	return &controller{
+func NewHandler(service IService) *handler {
+	return &handler{
 		svc: service,
 	}
 }
 
-func (c *controller) SearchByNameController(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) SearchByNameController(w http.ResponseWriter, req *http.Request) error {
 	nameReq := FindUserRequest{
 		FullName: req.URL.Query().Get("name"),
 	}

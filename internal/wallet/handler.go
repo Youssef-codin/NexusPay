@@ -7,17 +7,17 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 )
 
-type controller struct {
+type handler struct {
 	svc IService
 }
 
-func NewController(service IService) *controller {
-	return &controller{
+func NewHandler(service IService) *handler {
+	return &handler{
 		svc: service,
 	}
 }
 
-func (c *controller) GetByUserId(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
 	res, err := c.svc.GetByUserId(req.Context())
 	if err != nil {
 		switch {
@@ -31,7 +31,7 @@ func (c *controller) GetByUserId(w http.ResponseWriter, req *http.Request) error
 	return nil
 }
 
-func (c *controller) TopUp(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) TopUp(w http.ResponseWriter, req *http.Request) error {
 	var walletReq TopUpRequest
 
 	if err := api.Read(req, &walletReq); err != nil {

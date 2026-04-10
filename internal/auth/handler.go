@@ -8,17 +8,17 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-type controller struct {
+type handler struct {
 	svc IService
 }
 
-func NewController(service IService) *controller {
-	return &controller{
+func NewHandler(service IService) *handler {
+	return &handler{
 		svc: service,
 	}
 }
 
-func (c *controller) TestAuth(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
 	_, claims, err := jwtauth.FromContext(req.Context())
 	if err != nil {
 		return api.WrappedError(http.StatusUnauthorized, "unauthorized")
@@ -27,7 +27,7 @@ func (c *controller) TestAuth(w http.ResponseWriter, req *http.Request) error {
 	return nil
 }
 
-func (c *controller) LoginController(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) LoginController(w http.ResponseWriter, req *http.Request) error {
 	var loginReq loginRequest
 
 	if err := api.Read(req, &loginReq); err != nil {
@@ -50,7 +50,7 @@ func (c *controller) LoginController(w http.ResponseWriter, req *http.Request) e
 	return nil
 }
 
-func (c *controller) RegisterController(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) RegisterController(w http.ResponseWriter, req *http.Request) error {
 	var registerReq registerRequest
 
 	if err := api.Read(req, &registerReq); err != nil {
@@ -73,7 +73,7 @@ func (c *controller) RegisterController(w http.ResponseWriter, req *http.Request
 	return nil
 }
 
-func (c *controller) RefreshController(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) RefreshController(w http.ResponseWriter, req *http.Request) error {
 	var refreshReq refreshRequest
 
 	if err := api.Read(req, &refreshReq); err != nil {
@@ -95,7 +95,7 @@ func (c *controller) RefreshController(w http.ResponseWriter, req *http.Request)
 	return nil
 }
 
-func (c *controller) LogoutController(w http.ResponseWriter, req *http.Request) error {
+func (c *handler) LogoutController(w http.ResponseWriter, req *http.Request) error {
 	err := c.svc.logout(req.Context())
 	if err != nil {
 		switch {

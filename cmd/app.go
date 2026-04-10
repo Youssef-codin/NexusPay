@@ -68,18 +68,18 @@ func (app *application) mount() http.Handler {
 
 	WalletRepo := wallet.NewWalletRepo(app.db)
 	WalletService := wallet.NewService(app.db, WalletRepo, TransactionsService, PaymentService)
-	WalletController := wallet.NewController(WalletService)
+	WalletHandler := wallet.NewHandler(WalletService)
 
 	AuthRepo := auth.NewAuthRepo(app.db)
 	AuthService := auth.NewService(app.db, AuthRepo, UserCache, authenticator, WalletService)
-	AuthController := auth.NewController(AuthService)
+	AuthHandler := auth.NewHandler(AuthService)
 
 	UserRepo := users.NewUserRepo(app.db)
 	UserService := users.NewService(UserRepo, UserCache)
-	UserController := users.NewController(UserService)
+	UserHandler := users.NewHandler(UserService)
 
 	WebhookService := stripe.NewWebhookService(app.db, WalletService, TransactionsService)
-	WebhookController := stripe.NewWebhookController(
+	WebhookHandler := stripe.NewWebhookHandler(
 		app.config.stripe.webhookSecret,
 		WebhookService,
 	)
@@ -99,9 +99,9 @@ func (app *application) mount() http.Handler {
 		})
 
 		rpublic.Route("/auth", func(rauth chi.Router) {
-			rauth.Post("/register", api.Wrap(AuthController.RegisterController))
-			rauth.Post("/login", api.Wrap(AuthController.LoginController))
-			rauth.Post("/refresh", api.Wrap(AuthController.RefreshController))
+			rauth.Post("/register", api.Wrap(AuthHandler.RegisterController))
+			rauth.Post("/login", api.Wrap(AuthHandler.LoginController))
+			rauth.Post("/refresh", api.Wrap(AuthHandler.RefreshController))
 		})
 	})
 
@@ -111,14 +111,14 @@ func (app *application) mount() http.Handler {
 		rprotected.Use(api.NewUserLimiter(50, app.redis))
 
 		rprotected.Route("/users", func(r chi.Router) {
-			r.Get("/test", api.Wrap(AuthController.TestAuth))
-			r.Post("/logout", api.Wrap(AuthController.LogoutController))
-			r.Get("/", api.Wrap(UserController.SearchByNameController))
+			r.Get("/test", api.Wrap(AuthHandler.TestAuth))
+			r.Post("/logout", api.Wrap(AuthHandler.LogoutController))
+			r.Get("/", api.Wrap(UserHandler.SearchByNameController))
 		})
 
 		rprotected.Route("/wallet", func(r chi.Router) {
-			r.Get("/", api.Wrap(WalletController.GetByUserId))
-			r.Patch("/", api.Wrap(WalletController.TopUp))
+			r.Get("/", api.Wrap(WalletHandler.GetByUserId))
+			r.Patch("/", api.Wrap(WalletHandler.TopUp))
 		})
 	})
 
@@ -133,7 +133,7 @@ func (app *application) mount() http.Handler {
 			}),
 		))
 		rwebhooks.Route("/webhook", func(r chi.Router) {
-			r.Post("/stripe", api.Wrap(WebhookController.Handle))
+			r.Post("/stripe", api.Wrap(WebhookHandler.Handle))
 		})
 	})
 

@@ -2,23 +2,21 @@
 
 ## Queries (sqlc)
 
-- [ ] Create transfer
-- [ ] Update transfer status
-- [ ] Update transfer with transaction IDs
-- [ ] Get transfer by ID (with wallet ownership check)
-- [ ] Get transfers by wallet ID (sent + received)
+- [x] Create transfer
+- [x] Update transfer status
+- [x] Update transfer with transaction IDs
+- [x] Get transfer by ID (with wallet ownership check)
+- [x] Get transfers by wallet ID (sent + received)
 
 ## Repository
 
-- [ ] CreateTransfer
-- [ ] ExecuteTransfer (DB transaction — debit, credit, update statuses)
-- [ ] GetTransferByID
-- [ ] GetTransfers
+- [x] Done
 
 ## Service
 
 - [ ] CreateTransfer (validate receiver exists, sufficient balance, not sending to self)
 - [ ] GetTransferByID (ownership check)
+- [ ] ExecuteTransfer (DB transaction — debit, credit, update statuses)
 - [ ] GetTransfers
 
 ## Handlers
