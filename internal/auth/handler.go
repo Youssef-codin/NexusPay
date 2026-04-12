@@ -28,13 +28,13 @@ func (h *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
 }
 
 func (h *handler) LoginController(w http.ResponseWriter, req *http.Request) error {
-	var loginReq loginRequest
+	var dto loginRequest
 
-	if err := api.Read(req, &loginReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := h.svc.login(req.Context(), loginReq)
+	response, err := h.svc.login(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest):
@@ -51,13 +51,13 @@ func (h *handler) LoginController(w http.ResponseWriter, req *http.Request) erro
 }
 
 func (h *handler) RegisterController(w http.ResponseWriter, req *http.Request) error {
-	var registerReq registerRequest
+	var dto registerRequest
 
-	if err := api.Read(req, &registerReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := h.svc.register(req.Context(), registerReq)
+	response, err := h.svc.register(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest), errors.Is(err, ErrPasswordTooLong):
@@ -74,13 +74,13 @@ func (h *handler) RegisterController(w http.ResponseWriter, req *http.Request) e
 }
 
 func (h *handler) RefreshController(w http.ResponseWriter, req *http.Request) error {
-	var refreshReq refreshRequest
+	var dto refreshRequest
 
-	if err := api.Read(req, &refreshReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := h.svc.refreshToken(req.Context(), refreshReq)
+	response, err := h.svc.refreshToken(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):

@@ -26,7 +26,7 @@ type TransfersRepo struct {
 	db *db.DB
 }
 
-func NewAuthRepo(database *db.DB) transfersRepo {
+func NewRepo(database *db.DB) transfersRepo {
 	return &TransfersRepo{db: database}
 }
 
@@ -63,5 +63,5 @@ func (r *TransfersRepo) GetTransfersByWalletId(
 	ctx context.Context,
 	walletID pgtype.UUID,
 ) ([]repo.Transfer, error) {
-	return r.db.GetDBTX(ctx).GetTranfserBySentWalletId(ctx, walletID)
+	return r.db.GetDBTX(ctx).GetTransfersByWalletId(ctx, walletID)
 }

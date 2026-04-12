@@ -47,7 +47,7 @@ func (svc *WebhookService) HandlePaymentSucceeded(
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(txCtx)
 
 	transaction, err := svc.transactionSvc.GetById(txCtx, transactions.GetByIdRequest{
 		ID: req.TransactionID,

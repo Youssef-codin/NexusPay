@@ -20,7 +20,7 @@ type WalletRepo struct {
 	db *db.DB
 }
 
-func NewWalletRepo(database *db.DB) walletRepo {
+func NewRepo(database *db.DB) walletRepo {
 	return &WalletRepo{db: database}
 }
 

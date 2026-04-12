@@ -1,6 +1,6 @@
 -- name: CreateTransfer :one
 INSERT INTO transfers
-(id,
+(
  from_wallet_id,
  to_wallet_id,
  amount,
@@ -14,8 +14,7 @@ VALUES ($1,
         $4,
         $5,
         $6,
-        $7,
-        $8)
+        $7)
 RETURNING *;
 
 -- name: UpdateTransferStatus :one
@@ -36,7 +35,8 @@ SELECT *
 FROM transfers
 WHERE id = $1;
 
--- name: GetTranfserBySentWalletId :many
+-- name: GetTransfersByWalletId :many
 SELECT *
 FROM transfers
-WHERE from_wallet_id = $1;
+WHERE to_wallet_id = $1
+   OR from_wallet_id = $1;

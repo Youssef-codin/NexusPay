@@ -67,7 +67,6 @@ func TestCreateTransaction(t *testing.T) {
 			WalletID:    walletID.String(),
 			Amount:      1000,
 			Type:        repo.TransactionTypeCredit,
-			Status:      repo.TransactionStatusPending,
 			Description: "Test transaction",
 		})
 
@@ -88,7 +87,6 @@ func TestCreateTransaction(t *testing.T) {
 			WalletID:    walletID.String(),
 			Amount:      1000,
 			Type:        repo.TransactionTypeCredit,
-			Status:      repo.TransactionStatusPending,
 			Description: "Test transaction",
 		})
 

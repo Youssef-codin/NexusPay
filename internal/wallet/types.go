@@ -17,7 +17,8 @@ type TopUpRequest struct {
 }
 
 type DeductRequest struct {
-	Amount int64 `json:"amount_in_piastres" validate:"min=1"`
+	WalletID string `json:"wallet_id" validate:"required,uuid"`
+	Amount   int64  `json:"amount_in_piastres" validate:"min=1"`
 }
 
 type AddToWalletRequest struct {

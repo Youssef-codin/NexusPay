@@ -15,7 +15,7 @@ type UserRepo struct {
 	db *db.DB
 }
 
-func NewUserRepo(database *db.DB) userRepo {
+func NewRepo(database *db.DB) userRepo {
 	return &UserRepo{db: database}
 }
 

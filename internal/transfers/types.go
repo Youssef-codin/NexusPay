@@ -7,10 +7,9 @@ import (
 )
 
 type CreateTransferRequest struct {
-	FromWalletID string `json:"from_wallet_id"     validate:"required,uuid"`
-	ToWalletID   string `json:"to_wallet_id"       validate:"required,uuid"`
-	Amount       int64  `json:"amount_in_piastres" validate:"min=1000"`
-	Note         string `json:"note"`
+	ToWalletID string `json:"to_wallet_id"       validate:"required,uuid"`
+	Amount     int64  `json:"amount_in_piastres" validate:"min=1000"`
+	Note       string `json:"note"`
 }
 
 type GetTransferByIDRequest struct {
@@ -43,11 +42,23 @@ type TransferResponse struct {
 	Status    repo.TransferStatus `json:"status"`
 	Note      string              `json:"note"`
 	CreatedAt time.Time           `json:"created_at"`
-	UpdatedAt time.Time           `json:"updated_at"`
-	DeletedAt *time.Time          `json:"deleted_at"`
 }
 
 type GetTransfersByIDResponse struct {
 	FromWalletID string             `json:"from_wallet_id"`
 	Transfers    []TransferResponse `json:"transfers"`
+}
+
+type ProcessTransferRequest struct {
+	ID string `json:"id" validate:"required,uuid"`
+}
+
+type ProcessTransferResponse struct {
+	ID           string              `json:"id"`
+	FromWalletID string              `json:"from_wallet_id"`
+	ToWalletID   string              `json:"to_wallet_id"`
+	Amount       int64               `json:"amount_in_piastres"`
+	Status       repo.TransferStatus `json:"status"`
+	Note         string              `json:"note"`
+	CreatedAt    time.Time           `json:"created_at"`
 }

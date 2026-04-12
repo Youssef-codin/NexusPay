@@ -13,7 +13,7 @@ import (
 
 const createTransfer = `-- name: CreateTransfer :one
 INSERT INTO transfers
-(id,
+(
  from_wallet_id,
  to_wallet_id,
  amount,
@@ -27,13 +27,11 @@ VALUES ($1,
         $4,
         $5,
         $6,
-        $7,
-        $8)
+        $7)
 RETURNING id, from_wallet_id, to_wallet_id, amount, status, note, debit_transaction_id, credit_transaction_id, created_at, updated_at, deleted_at
 `
 
 type CreateTransferParams struct {
-	ID                  pgtype.UUID    `json:"id"`
 	FromWalletID        pgtype.UUID    `json:"from_wallet_id"`
 	ToWalletID          pgtype.UUID    `json:"to_wallet_id"`
 	Amount              int64          `json:"amount"`
@@ -45,7 +43,6 @@ type CreateTransferParams struct {
 
 func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error) {
 	row := q.db.QueryRow(ctx, createTransfer,
-		arg.ID,
 		arg.FromWalletID,
 		arg.ToWalletID,
 		arg.Amount,
@@ -71,14 +68,40 @@ func (q *Queries) CreateTransfer(ctx context.Context, arg CreateTransferParams) 
 	return i, err
 }
 
-const getTranfserBySentWalletId = `-- name: GetTranfserBySentWalletId :many
+const getTransferById = `-- name: GetTransferById :one
 SELECT id, from_wallet_id, to_wallet_id, amount, status, note, debit_transaction_id, credit_transaction_id, created_at, updated_at, deleted_at
 FROM transfers
-WHERE from_wallet_id = $1
+WHERE id = $1
 `
 
-func (q *Queries) GetTranfserBySentWalletId(ctx context.Context, fromWalletID pgtype.UUID) ([]Transfer, error) {
-	rows, err := q.db.Query(ctx, getTranfserBySentWalletId, fromWalletID)
+func (q *Queries) GetTransferById(ctx context.Context, id pgtype.UUID) (Transfer, error) {
+	row := q.db.QueryRow(ctx, getTransferById, id)
+	var i Transfer
+	err := row.Scan(
+		&i.ID,
+		&i.FromWalletID,
+		&i.ToWalletID,
+		&i.Amount,
+		&i.Status,
+		&i.Note,
+		&i.DebitTransactionID,
+		&i.CreditTransactionID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getTransfersByWalletId = `-- name: GetTransfersByWalletId :many
+SELECT id, from_wallet_id, to_wallet_id, amount, status, note, debit_transaction_id, credit_transaction_id, created_at, updated_at, deleted_at
+FROM transfers
+WHERE to_wallet_id = $1
+   OR from_wallet_id = $1
+`
+
+func (q *Queries) GetTransfersByWalletId(ctx context.Context, toWalletID pgtype.UUID) ([]Transfer, error) {
+	rows, err := q.db.Query(ctx, getTransfersByWalletId, toWalletID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,31 +130,6 @@ func (q *Queries) GetTranfserBySentWalletId(ctx context.Context, fromWalletID pg
 		return nil, err
 	}
 	return items, nil
-}
-
-const getTransferById = `-- name: GetTransferById :one
-SELECT id, from_wallet_id, to_wallet_id, amount, status, note, debit_transaction_id, credit_transaction_id, created_at, updated_at, deleted_at
-FROM transfers
-WHERE id = $1
-`
-
-func (q *Queries) GetTransferById(ctx context.Context, id pgtype.UUID) (Transfer, error) {
-	row := q.db.QueryRow(ctx, getTransferById, id)
-	var i Transfer
-	err := row.Scan(
-		&i.ID,
-		&i.FromWalletID,
-		&i.ToWalletID,
-		&i.Amount,
-		&i.Status,
-		&i.Note,
-		&i.DebitTransactionID,
-		&i.CreditTransactionID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
 }
 
 const updateTransferStatus = `-- name: UpdateTransferStatus :one

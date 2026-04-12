@@ -95,7 +95,7 @@ func (svc *Service) CreateTransaction(
 		},
 		Amount:     req.Amount,
 		Type:       req.Type,
-		Status:     req.Status,
+		Status:     repo.TransactionStatusPending,
 		TransferID: pgtype.UUID{Valid: false},
 		Description: pgtype.Text{
 			String: req.Description,

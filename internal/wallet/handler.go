@@ -32,13 +32,13 @@ func (h *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
 }
 
 func (h *handler) TopUp(w http.ResponseWriter, req *http.Request) error {
-	var walletReq TopUpRequest
+	var dto TopUpRequest
 
-	if err := api.Read(req, &walletReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Bad Request")
 	}
 
-	wallet, err := h.svc.TopUp(req.Context(), walletReq)
+	wallet, err := h.svc.TopUp(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrWalletNotFound):

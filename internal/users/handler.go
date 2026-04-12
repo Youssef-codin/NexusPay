@@ -18,7 +18,7 @@ func NewHandler(service IService) *handler {
 	}
 }
 
-func (h *handler) SearchByNameController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) SearchByName(w http.ResponseWriter, req *http.Request) error {
 	nameReq := FindUserRequest{
 		FullName: req.URL.Query().Get("name"),
 	}

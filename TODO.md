@@ -1,5 +1,7 @@
 # Transfers
 
+- [ ] add Idempotency (eventually)
+
 ## Queries (sqlc)
 
 - [x] Create transfer
@@ -14,18 +16,18 @@
 
 ## Service
 
-- [ ] CreateTransfer (validate receiver exists, sufficient balance, not sending to self)
-- [ ] GetTransferByID (ownership check)
-- [ ] ExecuteTransfer (DB transaction — debit, credit, update statuses)
-- [ ] GetTransfers
+- [x] CreateTransfer (validate receiver exists, sufficient balance, not sending to self)
+~- [ ] GetTransferByID (ownership check)~
+- [x] ExecuteTransfer (DB transaction — debit, credit, update statuses)
+- [x] GetTransfers
 
 ## Handlers
 
-- [ ] POST /transfers
-- [ ] GET /transfers
+- [x] POST /transfers
+- [x] GET /transfers
 - [ ] GET /transfers/:id
 
 ## Wiring
 
-- [ ] Register routes in router
-- [ ] Apply httprate middleware to POST /transfers (10 req/min per user)
+- [x] Register routes in router
+- [x] Apply httprate middleware to POST /transfers (10 req/min per user)

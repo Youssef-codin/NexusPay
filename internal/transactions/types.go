@@ -11,14 +11,11 @@ type GetByIdRequest struct {
 }
 
 type CreateTransactionRequest struct {
-	WalletID    string                 `json:"wallet_id"`
-	Amount      int64                  `json:"amount_in_piastres" validate:"min=1000"`
-	Type        repo.TransactionType   `json:"transaction_type"   validate:"transaction_type"`
-	Status      repo.TransactionStatus `json:"transaction_status" validate:"transaction_status"`
-	Description string                 `json:"description"`
+	WalletID    string               `json:"wallet_id"`
+	Amount      int64                `json:"amount_in_piastres" validate:"min=1000"`
+	Type        repo.TransactionType `json:"transaction_type"   validate:"transaction_type"`
+	Description string               `json:"description"`
 }
-
-// type idk repo.Transaction
 
 type GetTransactionResponse struct {
 	ID          string                 `json:"id"`
