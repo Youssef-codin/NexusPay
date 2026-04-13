@@ -57,6 +57,11 @@ func (h *handler) Handle(w http.ResponseWriter, req *http.Request) error {
 	}
 
 	transactionID := paymentIntent.Metadata["transaction_id"]
+	if transactionID == "" {
+		slog.Error("Missing transaction_id in webhook metadata")
+		api.Respond(w, "missing transaction_id", http.StatusBadRequest)
+		return nil
+	}
 
 	switch event.Type {
 	case "payment_intent.succeeded":

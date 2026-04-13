@@ -50,6 +50,8 @@ func (h *handler) CreateTransfer(w http.ResponseWriter, req *http.Request) error
 			return api.WrappedError(http.StatusBadRequest, "Insufficient funds")
 		case errors.Is(err, ErrSelfTransfer):
 			return api.WrappedError(http.StatusBadRequest, "Can not transfer to self")
+		case errors.Is(err, ErrBadRequest):
+			return api.WrappedError(http.StatusBadRequest, "Bad transfer request")
 		default:
 			return err
 		}

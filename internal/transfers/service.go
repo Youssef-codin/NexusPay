@@ -7,7 +7,6 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/db"
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
-	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
 	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/google/uuid"
@@ -17,6 +16,7 @@ import (
 var (
 	ErrTransferNotFound = errors.New("transfer not found")
 	ErrSelfTransfer     = errors.New("can not transfer to self")
+	ErrBadRequest       = errors.New("bad request")
 )
 
 type IService interface {
@@ -53,7 +53,7 @@ func (svc *Service) CreateTransfer(
 	req CreateTransferRequest,
 ) (res CreateTransferResponse, err error) {
 	if err := validator.Validate(&req); err != nil {
-		return CreateTransferResponse{}, err
+		return CreateTransferResponse{}, ErrBadRequest
 	}
 
 	wallet, err := svc.walletSvc.GetByUserId(ctx)
@@ -152,12 +152,12 @@ func (svc *Service) ExecuteTransfer(
 	ctx context.Context,
 	t repo.Transfer,
 ) (transfer repo.Transfer, err error) {
-
 	sender, err := svc.walletSvc.GetById(ctx, wallet.GetWalletRequest{
 		ID: t.FromWalletID.String(),
 	})
 
 	if err != nil {
+		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
@@ -170,6 +170,7 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
@@ -183,6 +184,7 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
@@ -196,6 +198,7 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
@@ -209,6 +212,7 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
@@ -219,16 +223,19 @@ func (svc *Service) ExecuteTransfer(
 	return t, nil
 }
 
-func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDResponse, err error) {
-	id, err := api.GetTokenUserID(ctx)
-	if err != nil {
-		return GetTransfersByIDResponse{}, err
-	}
-	ctxId, _ := uuid.Parse(id)
-
-	wallet, err := svc.walletSvc.GetById(ctx, wallet.GetWalletRequest{
-		ID: ctxId.String(),
+func (svc *Service) setBothTransactionsFailed(ctx context.Context, t repo.Transfer) {
+	svc.transactionSvc.UpdateStatus(ctx, transactions.UpdateTransactionRequest{
+		ID:     t.DebitTransactionID.String(),
+		Status: repo.TransactionStatusFailed,
 	})
+	svc.transactionSvc.UpdateStatus(ctx, transactions.UpdateTransactionRequest{
+		ID:     t.CreditTransactionID.String(),
+		Status: repo.TransactionStatusFailed,
+	})
+}
+
+func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDResponse, err error) {
+	wallet, err := svc.walletSvc.GetByUserId(ctx)
 
 	walletID, _ := uuid.Parse(wallet.ID)
 	transfers, err := svc.repo.GetTransfersByWalletId(ctx, pgtype.UUID{

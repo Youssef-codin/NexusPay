@@ -1,6 +1,7 @@
 # Transfers
 
-- [ ] add Idempotency (eventually)
+- [ ] add Idempotency for transfer
+- [ ] add Pagination 
 
 ## Queries (sqlc)
 
