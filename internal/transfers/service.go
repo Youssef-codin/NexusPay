@@ -3,6 +3,7 @@ package transfers
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Youssef-codin/NexusPay/internal/db"
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
@@ -157,12 +158,16 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		origErr := err
 		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
 		})
-		return t, err
+		if err != nil {
+			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
+		}
+		return t, origErr
 	}
 
 	receiver, err := svc.walletSvc.GetById(ctx, wallet.GetWalletRequest{
@@ -170,12 +175,16 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		origErr := err
 		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
 		})
-		return t, err
+		if err != nil {
+			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
+		}
+		return t, origErr
 	}
 
 	_, err = svc.walletSvc.DeductFromBalance(ctx, wallet.DeductRequest{
@@ -184,12 +193,16 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		origErr := err
 		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
 		})
-		return t, err
+		if err != nil {
+			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
+		}
+		return t, origErr
 	}
 
 	_, err = svc.walletSvc.AddToWallet(ctx, wallet.AddToWalletRequest{
@@ -198,12 +211,16 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		origErr := err
 		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
 		})
-		return t, err
+		if err != nil {
+			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
+		}
+		return t, origErr
 	}
 
 	t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
@@ -212,12 +229,16 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
+		origErr := err
 		svc.setBothTransactionsFailed(ctx, t)
 		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
 			ID:     t.ID,
 			Status: repo.TransferStatusFailed,
 		})
-		return t, err
+		if err != nil {
+			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
+		}
+		return t, origErr
 	}
 
 	return t, nil
