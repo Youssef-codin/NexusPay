@@ -184,7 +184,6 @@ func (svc *Service) TopUp(
 			WalletID:    wallet.ID.String(),
 			Amount:      req.Amount,
 			Type:        repo.TransactionTypeCredit,
-			Status:      repo.TransactionStatusPending,
 			Description: req.Description,
 		},
 	)
@@ -221,19 +220,9 @@ func (svc *Service) DeductFromBalance(
 	ctx context.Context,
 	req DeductRequest,
 ) (DeductResponse, error) {
-	id, err := api.GetTokenUserID(ctx)
-	if err != nil {
-		return DeductResponse{}, err
-	}
-	parsedId, _ := uuid.Parse(id)
+	parsedId, _ := uuid.Parse(req.WalletID)
 
-	txCtx, tx, err := svc.txManager.StartTx(ctx)
-	if err != nil {
-		return DeductResponse{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	wallet, err := svc.repo.GetWalletByUserId(txCtx, pgtype.UUID{
+	wallet, err := svc.repo.GetWalletById(ctx, pgtype.UUID{
 		Bytes: parsedId,
 		Valid: true,
 	})
@@ -249,11 +238,8 @@ func (svc *Service) DeductFromBalance(
 		return DeductResponse{}, ErrInsufficientFunds
 	}
 
-	newWallet, err := svc.repo.DeductFromBalance(txCtx, repo.DeductFromBalanceParams{
-		UserID: pgtype.UUID{
-			Bytes: parsedId,
-			Valid: true,
-		},
+	newWallet, err := svc.repo.DeductFromBalance(ctx, repo.DeductFromBalanceParams{
+		UserID:  wallet.UserID,
 		Balance: req.Amount,
 	})
 
@@ -264,13 +250,9 @@ func (svc *Service) DeductFromBalance(
 		return DeductResponse{}, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return DeductResponse{}, err
-	}
-
 	return DeductResponse{
 		ID:        newWallet.ID.String(),
-		UserID:    parsedId.String(),
+		UserID:    uuid.UUID(wallet.UserID.Bytes).String(),
 		Status:    string(repo.TransactionStatusCompleted),
 		UpdatedAt: newWallet.UpdatedAt.Time,
 	}, nil
@@ -294,22 +276,12 @@ func (svc *Service) AddToWallet(
 		return AddToWalletResponse{}, err
 	}
 
-	txCtx, tx, err := svc.txManager.StartTx(ctx)
-	if err != nil {
-		return AddToWalletResponse{}, err
-	}
-	defer tx.Rollback(txCtx)
-
-	updatedWallet, err := svc.repo.AddToBalance(txCtx, repo.AddToBalanceParams{
+	updatedWallet, err := svc.repo.AddToBalance(ctx, repo.AddToBalanceParams{
 		UserID:  wallet.UserID,
 		Balance: req.Amount,
 	})
 
 	if err != nil {
-		return AddToWalletResponse{}, err
-	}
-
-	if err := tx.Commit(txCtx); err != nil {
 		return AddToWalletResponse{}, err
 	}
 

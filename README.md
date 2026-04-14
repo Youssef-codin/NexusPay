@@ -296,3 +296,36 @@ Runs every minute:
 - Webhook signature must be verified using `stripe.ConstructEvent`
 - `/users/search` requires a minimum query length of 3 characters and returns only non-sensitive fields (id, full_name, email)
 - Use `SELECT ... FOR UPDATE SKIP LOCKED` in the cron job to prevent concurrent duplicate execution across multiple instances
+
+---
+
+## Running Integration Tests
+
+Integration tests require external services (PostgreSQL, Redis) and Stripe CLI for webhook forwarding.
+
+### Prerequisites
+
+1. **Stripe CLI** must be installed and authenticated:
+   ```bash
+   stripe login
+   ```
+
+2. **Docker** must be running (for testcontainers)
+
+### Run Integration Tests
+
+```bash
+go test -tags integration -v ./tests/integration/...
+```
+
+The tests will automatically start PostgreSQL and Redis containers, run migrations, and set up the test app.
+
+### Stripe Webhook Forwarding
+
+For tests that involve Stripe (top-ups, webhooks), Stripe CLI must forward webhooks:
+
+```bash
+stripe listen --forward-to localhost:3002/webhook/stripe
+```
+
+> Note: Integration tests will fail if Stripe CLI is not running and forwarding webhooks to the test server.

@@ -29,7 +29,7 @@ type TransactionRepo struct {
 	db *db.DB
 }
 
-func NewTransactionRepo(database *db.DB) transactionRepo {
+func NewRepo(database *db.DB) transactionRepo {
 	return &TransactionRepo{db: database}
 }
 

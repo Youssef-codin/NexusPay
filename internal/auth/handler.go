@@ -8,17 +8,17 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-type controller struct {
+type handler struct {
 	svc IService
 }
 
-func NewController(service IService) *controller {
-	return &controller{
+func NewHandler(service IService) *handler {
+	return &handler{
 		svc: service,
 	}
 }
 
-func (c *controller) TestAuth(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
 	_, claims, err := jwtauth.FromContext(req.Context())
 	if err != nil {
 		return api.WrappedError(http.StatusUnauthorized, "unauthorized")
@@ -27,14 +27,14 @@ func (c *controller) TestAuth(w http.ResponseWriter, req *http.Request) error {
 	return nil
 }
 
-func (c *controller) LoginController(w http.ResponseWriter, req *http.Request) error {
-	var loginReq loginRequest
+func (h *handler) LoginController(w http.ResponseWriter, req *http.Request) error {
+	var dto loginRequest
 
-	if err := api.Read(req, &loginReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := c.svc.login(req.Context(), loginReq)
+	response, err := h.svc.login(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest):
@@ -50,14 +50,14 @@ func (c *controller) LoginController(w http.ResponseWriter, req *http.Request) e
 	return nil
 }
 
-func (c *controller) RegisterController(w http.ResponseWriter, req *http.Request) error {
-	var registerReq registerRequest
+func (h *handler) RegisterController(w http.ResponseWriter, req *http.Request) error {
+	var dto registerRequest
 
-	if err := api.Read(req, &registerReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := c.svc.register(req.Context(), registerReq)
+	response, err := h.svc.register(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadRequest), errors.Is(err, ErrPasswordTooLong):
@@ -73,14 +73,14 @@ func (c *controller) RegisterController(w http.ResponseWriter, req *http.Request
 	return nil
 }
 
-func (c *controller) RefreshController(w http.ResponseWriter, req *http.Request) error {
-	var refreshReq refreshRequest
+func (h *handler) RefreshController(w http.ResponseWriter, req *http.Request) error {
+	var dto refreshRequest
 
-	if err := api.Read(req, &refreshReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Invalid input")
 	}
 
-	response, err := c.svc.refreshToken(req.Context(), refreshReq)
+	response, err := h.svc.refreshToken(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):
@@ -95,8 +95,8 @@ func (c *controller) RefreshController(w http.ResponseWriter, req *http.Request)
 	return nil
 }
 
-func (c *controller) LogoutController(w http.ResponseWriter, req *http.Request) error {
-	err := c.svc.logout(req.Context())
+func (h *handler) LogoutController(w http.ResponseWriter, req *http.Request) error {
+	err := h.svc.logout(req.Context())
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):

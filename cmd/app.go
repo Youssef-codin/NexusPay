@@ -17,6 +17,7 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/payment/stripe"
 	"github.com/Youssef-codin/NexusPay/internal/security"
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
+	"github.com/Youssef-codin/NexusPay/internal/transfers"
 	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/Youssef-codin/NexusPay/internal/wallet"
@@ -63,23 +64,32 @@ func (app *application) mount() http.Handler {
 
 	PaymentService := stripe.NewService(app.config.stripe.apiKey)
 
-	TransactionRepo := transactions.NewTransactionRepo(app.db)
+	TransactionRepo := transactions.NewRepo(app.db)
 	TransactionsService := transactions.NewService(TransactionRepo)
 
-	WalletRepo := wallet.NewWalletRepo(app.db)
+	WalletRepo := wallet.NewRepo(app.db)
 	WalletService := wallet.NewService(app.db, WalletRepo, TransactionsService, PaymentService)
-	WalletController := wallet.NewController(WalletService)
+	WalletHandler := wallet.NewHandler(WalletService)
 
-	AuthRepo := auth.NewAuthRepo(app.db)
+	AuthRepo := auth.NewRepo(app.db)
 	AuthService := auth.NewService(app.db, AuthRepo, UserCache, authenticator, WalletService)
-	AuthController := auth.NewController(AuthService)
+	AuthHandler := auth.NewHandler(AuthService)
 
-	UserRepo := users.NewUserRepo(app.db)
+	UserRepo := users.NewRepo(app.db)
 	UserService := users.NewService(UserRepo, UserCache)
-	UserController := users.NewController(UserService)
+	UserHandler := users.NewHandler(UserService)
+
+	TransfersRepo := transfers.NewRepo(app.db)
+	TransfersService := transfers.NewService(
+		app.db,
+		TransfersRepo,
+		WalletService,
+		TransactionsService,
+	)
+	TransfersHandler := transfers.NewHandler(TransfersService)
 
 	WebhookService := stripe.NewWebhookService(app.db, WalletService, TransactionsService)
-	WebhookController := stripe.NewWebhookController(
+	WebhookHandler := stripe.NewWebhookHandler(
 		app.config.stripe.webhookSecret,
 		WebhookService,
 	)
@@ -99,26 +109,33 @@ func (app *application) mount() http.Handler {
 		})
 
 		rpublic.Route("/auth", func(rauth chi.Router) {
-			rauth.Post("/register", api.Wrap(AuthController.RegisterController))
-			rauth.Post("/login", api.Wrap(AuthController.LoginController))
-			rauth.Post("/refresh", api.Wrap(AuthController.RefreshController))
+			rauth.Post("/register", api.Wrap(AuthHandler.RegisterController))
+			rauth.Post("/login", api.Wrap(AuthHandler.LoginController))
+			rauth.Post("/refresh", api.Wrap(AuthHandler.RefreshController))
 		})
 	})
 
 	rmain.Group(func(rprotected chi.Router) {
 		rprotected.Use(jwtauth.Verifier(authenticator.TokenAuth))
 		rprotected.Use(authenticator.AuthHandler())
-		rprotected.Use(api.NewUserLimiter(50, app.redis))
 
 		rprotected.Route("/users", func(r chi.Router) {
-			r.Get("/test", api.Wrap(AuthController.TestAuth))
-			r.Post("/logout", api.Wrap(AuthController.LogoutController))
-			r.Get("/", api.Wrap(UserController.SearchByNameController))
+			r.Use(api.NewUserLimiter(50, app.redis))
+			r.Get("/test", api.Wrap(AuthHandler.TestAuth))
+			r.Post("/logout", api.Wrap(AuthHandler.LogoutController))
+			r.Get("/", api.Wrap(UserHandler.SearchByName))
 		})
 
 		rprotected.Route("/wallet", func(r chi.Router) {
-			r.Get("/", api.Wrap(WalletController.GetByUserId))
-			r.Patch("/", api.Wrap(WalletController.TopUp))
+			r.Use(api.NewUserLimiter(50, app.redis))
+			r.Get("/", api.Wrap(WalletHandler.GetByUserId))
+			r.Patch("/", api.Wrap(WalletHandler.TopUp))
+		})
+
+		rprotected.Route("/transfers", func(r chi.Router) {
+			r.Use(api.NewUserLimiter(10, app.redis))
+			r.Get("/", api.Wrap(TransfersHandler.GetTransfers))
+			r.Post("/", api.Wrap(TransfersHandler.CreateTransfer))
 		})
 	})
 
@@ -133,7 +150,7 @@ func (app *application) mount() http.Handler {
 			}),
 		))
 		rwebhooks.Route("/webhook", func(r chi.Router) {
-			r.Post("/stripe", api.Wrap(WebhookController.Handle))
+			r.Post("/stripe", api.Wrap(WebhookHandler.Handle))
 		})
 	})
 

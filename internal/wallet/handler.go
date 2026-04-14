@@ -7,18 +7,18 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 )
 
-type controller struct {
+type handler struct {
 	svc IService
 }
 
-func NewController(service IService) *controller {
-	return &controller{
+func NewHandler(service IService) *handler {
+	return &handler{
 		svc: service,
 	}
 }
 
-func (c *controller) GetByUserId(w http.ResponseWriter, req *http.Request) error {
-	res, err := c.svc.GetByUserId(req.Context())
+func (h *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
+	res, err := h.svc.GetByUserId(req.Context())
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrWalletNotFound):
@@ -31,14 +31,14 @@ func (c *controller) GetByUserId(w http.ResponseWriter, req *http.Request) error
 	return nil
 }
 
-func (c *controller) TopUp(w http.ResponseWriter, req *http.Request) error {
-	var walletReq TopUpRequest
+func (h *handler) TopUp(w http.ResponseWriter, req *http.Request) error {
+	var dto TopUpRequest
 
-	if err := api.Read(req, &walletReq); err != nil {
+	if err := api.Read(req, &dto); err != nil {
 		return api.WrappedError(http.StatusBadRequest, "Bad Request")
 	}
 
-	wallet, err := c.svc.TopUp(req.Context(), walletReq)
+	wallet, err := h.svc.TopUp(req.Context(), dto)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrWalletNotFound):
