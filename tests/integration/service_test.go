@@ -23,6 +23,7 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/payment/stripe"
 	"github.com/Youssef-codin/NexusPay/internal/security"
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
+	"github.com/Youssef-codin/NexusPay/internal/transfers"
 	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/Youssef-codin/NexusPay/internal/wallet"
@@ -395,6 +396,18 @@ func setupValidation() error {
 		godotenv.Load(projectRoot + "/.env")
 	}
 
+	os.Setenv("STRIPE_WEBHOOK_SKIP_SIGNATURE", "true")
+
+	if err := checkStripeCLI(); err != nil {
+		mu.Unlock()
+		return err
+	}
+
+	if err := checkStripeKey(); err != nil {
+		mu.Unlock()
+		return err
+	}
+
 	ctx := context.Background()
 	if err := startTestcontainers(ctx); err != nil {
 		mu.Unlock()
@@ -407,11 +420,29 @@ func setupValidation() error {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
+	app, err := setupTestApp()
+	if err != nil {
+		cleanup(ctx)
+		mu.Unlock()
+		return fmt.Errorf("setup test app: %w", err)
+	}
+	_ = app
+
+	if err := startStripeCLI(); err != nil {
+		slog.Warn("Stripe CLI not started, webhook tests may fail", "error", err)
+	} else {
+		os.Setenv("STRIPE_WEBHOOK_SECRET", webhookSecret)
+	}
+
 	return nil
 }
 
 func teardownValidation() {
 	ctx := context.Background()
+	if testAppInstance != nil {
+		testAppInstance.close()
+		testAppInstance = nil
+	}
 	if pgPool != nil {
 		pgPool.Close()
 	}
@@ -442,6 +473,10 @@ func setupTestApp() (*testApp, error) {
 	walletRepo := wallet.NewRepo(database)
 	walletService := wallet.NewService(database, walletRepo, transactionService, paymentService)
 	walletHandler := wallet.NewHandler(walletService)
+
+	transfersRepo := transfers.NewRepo(database)
+	transfersService := transfers.NewService(database, transfersRepo, walletService, transactionService)
+	transfersHandler := transfers.NewHandler(transfersService)
 
 	authService := auth.NewService(database, authRepo, userCache, authenticator, walletService)
 	authHandler := auth.NewHandler(authService)
@@ -483,6 +518,11 @@ func setupTestApp() (*testApp, error) {
 		rprotected.Route("/wallet", func(r chi.Router) {
 			r.Get("/", api.Wrap(walletHandler.GetByUserId))
 			r.Patch("/", api.Wrap(walletHandler.TopUp))
+		})
+
+		rprotected.Route("/transfers", func(r chi.Router) {
+			r.Get("/", api.Wrap(transfersHandler.GetTransfers))
+			r.Post("/", api.Wrap(transfersHandler.CreateTransfer))
 		})
 	})
 
@@ -837,5 +877,244 @@ func TestTopUp_Validation_Integration(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected status 400 for amount below minimum, got %d", resp.StatusCode)
+	}
+}
+
+func TestConcurrentTransfers_Integration(t *testing.T) {
+	if err := setupValidation(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	defer teardownValidation()
+
+	app := testAppInstance
+
+	senderEmail := fmt.Sprintf("sender-%s@example.com", uuid.New().String())
+	receiver1Email := fmt.Sprintf("receiver1-%s@example.com", uuid.New().String())
+	receiver2Email := fmt.Sprintf("receiver2-%s@example.com", uuid.New().String())
+
+	senderToken, _ := app.registerUser(t, senderEmail, testUserPassword)
+	receiver1Token, _ := app.registerUser(t, receiver1Email, testUserPassword)
+	receiver2Token, _ := app.registerUser(t, receiver2Email, testUserPassword)
+
+	_, senderStatus, senderBodyStr := app.topUpWithBody(t, senderToken, 20000)
+	_, r1Status, r1BodyStr := app.topUpWithBody(t, receiver1Token, 5000)
+	_, r2Status, r2BodyStr := app.topUpWithBody(t, receiver2Token, 5000)
+
+	t.Logf("Topup results - Sender: status=%d, Receiver1: status=%d, Receiver2: status=%d", senderStatus, r1Status, r2Status)
+
+	if senderStatus != 200 || r1Status != 200 || r2Status != 200 {
+		t.Fatalf("topup failed: sender=%d (body: %s), receiver1=%d (body: %s), receiver2=%d (body: %s)",
+			senderStatus, senderBodyStr, r1Status, r1BodyStr, r2Status, r2BodyStr)
+	}
+
+	var senderBody, r1Body, r2Body map[string]interface{}
+	json.Unmarshal([]byte(senderBodyStr), &senderBody)
+	json.Unmarshal([]byte(r1BodyStr), &r1Body)
+	json.Unmarshal([]byte(r2BodyStr), &r2Body)
+
+	senderPaymentID := senderBody["provider_payment_id"].(string)
+	r1PaymentID := r1Body["provider_payment_id"].(string)
+	r2PaymentID := r2Body["provider_payment_id"].(string)
+
+	if senderPaymentID == "" || r1PaymentID == "" || r2PaymentID == "" {
+		t.Fatalf("failed to get payment IDs from response")
+	}
+
+	if err := app.confirmPayment(senderPaymentID); err != nil {
+		t.Fatalf("confirm payment failed: %v", err)
+	}
+	if err := app.confirmPayment(r1PaymentID); err != nil {
+		t.Fatalf("confirm payment failed: %v", err)
+	}
+	if err := app.confirmPayment(r2PaymentID); err != nil {
+		t.Fatalf("confirm payment failed: %v", err)
+	}
+
+	for i := 0; i < 10; i++ {
+		senderWallet := app.getWallet(t, senderToken)
+		receiver1Wallet := app.getWallet(t, receiver1Token)
+		receiver2Wallet := app.getWallet(t, receiver2Token)
+		senderBalance := int64(senderWallet["balance"].(float64))
+		receiver1Balance := int64(receiver1Wallet["balance"].(float64))
+		receiver2Balance := int64(receiver2Wallet["balance"].(float64))
+		if senderBalance >= 20000 && receiver1Balance >= 5000 && receiver2Balance >= 5000 {
+			break
+		}
+		t.Logf("Waiting for topups... Sender: %d, R1: %d, R2: %d", senderBalance, receiver1Balance, receiver2Balance)
+		time.Sleep(1 * time.Second)
+	}
+
+	senderWallet := app.getWallet(t, senderToken)
+	receiver1Wallet := app.getWallet(t, receiver1Token)
+	receiver2Wallet := app.getWallet(t, receiver2Token)
+
+	receiver1WalletID := receiver1Wallet["id"].(string)
+	receiver2WalletID := receiver2Wallet["id"].(string)
+
+	t.Logf("Initial - Sender: %v, Receiver1: %v, Receiver2: %v",
+		senderWallet["balance"], receiver1Wallet["balance"], receiver2Wallet["balance"])
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, 4)
+	resultChan := make(chan map[string]interface{}, 4)
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		body, _ := json.Marshal(map[string]interface{}{
+			"to_wallet_id":       receiver1WalletID,
+			"amount_in_piastres": 3000,
+		})
+		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
+		req.Header.Set("Authorization", "Bearer "+senderToken)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.httpClient.Do(req)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+		resultChan <- result
+		t.Logf("Transfer to receiver1 response: status=%d, result=%v", resp.StatusCode, result)
+	}()
+
+	go func() {
+		defer wg.Done()
+		body, _ := json.Marshal(map[string]interface{}{
+			"to_wallet_id":       receiver2WalletID,
+			"amount_in_piastres": 3000,
+		})
+		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
+		req.Header.Set("Authorization", "Bearer "+senderToken)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := app.httpClient.Do(req)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer resp.Body.Close()
+
+		var result map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+		resultChan <- result
+		t.Logf("Transfer to receiver2 response: status=%d, result=%v", resp.StatusCode, result)
+	}()
+
+	wg.Wait()
+	close(errChan)
+	close(resultChan)
+
+	time.Sleep(500 * time.Millisecond)
+
+	finalSenderWallet := app.getWallet(t, senderToken)
+	finalReceiver1Wallet := app.getWallet(t, receiver1Token)
+	finalReceiver2Wallet := app.getWallet(t, receiver2Token)
+
+	senderBalance := int64(finalSenderWallet["balance"].(float64))
+	receiver1Balance := int64(finalReceiver1Wallet["balance"].(float64))
+	receiver2Balance := int64(finalReceiver2Wallet["balance"].(float64))
+
+	t.Logf("Final - Sender: %d, Receiver1: %d, Receiver2: %d",
+		senderBalance, receiver1Balance, receiver2Balance)
+
+	totalOut := (20000 - senderBalance)
+	totalIn := (receiver1Balance - 5000) + (receiver2Balance - 5000)
+
+	t.Logf("Total deducted from sender: %d, Total credited to receivers: %d", totalOut, totalIn)
+
+	if totalOut != totalIn {
+		t.Errorf("ATOMICITY BUG: Money in (%d) != Money out (%d) - funds lost or created!", totalIn, totalOut)
+	}
+
+	if senderBalance < 0 {
+		t.Errorf("ATOMICITY BUG: Sender balance is negative: %d", senderBalance)
+	}
+}
+
+func TestConcurrentTransfers_ExceedBalance_Integration(t *testing.T) {
+	if err := setupValidation(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	defer teardownValidation()
+
+	app := testAppInstance
+
+	senderEmail := fmt.Sprintf("sender2-%s@example.com", uuid.New().String())
+	receiverEmail := fmt.Sprintf("receiver-%s@example.com", uuid.New().String())
+
+	senderToken, _ := app.registerUser(t, senderEmail, testUserPassword)
+	receiverToken, _ := app.registerUser(t, receiverEmail, testUserPassword)
+
+	app.topUp(t, senderToken, 5000)
+	app.topUp(t, receiverToken, 1000)
+
+	senderWallet := app.getWallet(t, senderToken)
+	receiverWallet := app.getWallet(t, receiverToken)
+
+	_ = senderWallet["id"].(string)
+
+	t.Logf("Initial - Sender: %v, Receiver: %v",
+		senderWallet["balance"], receiverWallet["balance"])
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		body, _ := json.Marshal(map[string]interface{}{
+			"to_wallet_id":       receiverWallet["id"].(string),
+			"amount_in_piastres": 3000,
+		})
+		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
+		req.Header.Set("Authorization", "Bearer "+senderToken)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, _ := app.httpClient.Do(req)
+		if resp != nil {
+			defer resp.Body.Close()
+			t.Logf("Transfer 1 status: %d", resp.StatusCode)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		body, _ := json.Marshal(map[string]interface{}{
+			"to_wallet_id":       receiverWallet["id"].(string),
+			"amount_in_piastres": 3000,
+		})
+		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
+		req.Header.Set("Authorization", "Bearer "+senderToken)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, _ := app.httpClient.Do(req)
+		if resp != nil {
+			defer resp.Body.Close()
+			t.Logf("Transfer 2 status: %d", resp.StatusCode)
+		}
+	}()
+
+	wg.Wait()
+
+	time.Sleep(500 * time.Millisecond)
+
+	finalSenderWallet := app.getWallet(t, senderToken)
+	finalReceiverWallet := app.getWallet(t, receiverToken)
+
+	senderBalance := int64(finalSenderWallet["balance"].(float64))
+	receiverBalance := int64(finalReceiverWallet["balance"].(float64))
+
+	t.Logf("Final - Sender: %d, Receiver: %d", senderBalance, receiverBalance)
+
+	if senderBalance < 0 {
+		t.Errorf("RACE CONDITION: Sender balance went negative (%d) - double spending detected!", senderBalance)
+	}
+
+	if receiverBalance > 7000 {
+		t.Errorf("RACE CONDITION: Receiver got too much money (%d) - expected max 7000", receiverBalance)
 	}
 }
