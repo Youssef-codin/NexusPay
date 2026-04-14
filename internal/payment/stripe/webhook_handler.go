@@ -69,21 +69,39 @@ func (h *handler) Handle(w http.ResponseWriter, req *http.Request) error {
 			TransactionID: transactionID,
 		})
 		if err != nil {
-			slog.Error("Failed to handle payment succeeded", "error", err, "transaction_id", transactionID)
+			slog.Error(
+				"Failed to handle payment succeeded",
+				"error",
+				err,
+				"transaction_id",
+				transactionID,
+			)
 		}
 	case "payment_intent.payment_failed":
 		err := h.service.HandlePaymentFailed(req.Context(), HandlePaymentFailedRequest{
 			TransactionID: transactionID,
 		})
 		if err != nil {
-			slog.Error("Failed to handle payment failed", "error", err, "transaction_id", transactionID)
+			slog.Error(
+				"Failed to handle payment failed",
+				"error",
+				err,
+				"transaction_id",
+				transactionID,
+			)
 		}
 	case "payment_intent.canceled":
 		err := h.service.HandlePaymentCanceled(req.Context(), HandlePaymentCanceledRequest{
 			TransactionID: transactionID,
 		})
 		if err != nil {
-			slog.Error("Failed to handle payment canceled", "error", err, "transaction_id", transactionID)
+			slog.Error(
+				"Failed to handle payment canceled",
+				"error",
+				err,
+				"transaction_id",
+				transactionID,
+			)
 		}
 	default:
 		slog.Debug("Unhandled event type", "type", event.Type)

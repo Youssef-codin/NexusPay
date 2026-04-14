@@ -543,18 +543,14 @@ func TestCreateWallet(t *testing.T) {
 }
 
 func TestDeductFromBalance(t *testing.T) {
-	userID := uuid.New()
-	ctx := withUserID(context.Background(), userID.String())
 	walletID := uuid.New()
+	userID := uuid.New()
 	now := time.Now()
 
 	t.Run("success", func(t *testing.T) {
-		mockTxManager := new(MockTxManager)
 		mockRepo := new(MockwalletRepo)
-		mockTx := &MockTx{}
 
-		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
-		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(repo.Wallet{
+		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).Return(repo.Wallet{
 			ID:      pgtype.UUID{Bytes: walletID, Valid: true},
 			UserID:  pgtype.UUID{Bytes: userID, Valid: true},
 			Balance: 5000,
@@ -567,76 +563,66 @@ func TestDeductFromBalance(t *testing.T) {
 		}, nil)
 
 		svc := &Service{
-			txManager: mockTxManager,
-			repo:      mockRepo,
+			repo: mockRepo,
 		}
-		resp, err := svc.DeductFromBalance(ctx, DeductRequest{Amount: 2000})
+		resp, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 2000})
 
 		assert.NoError(t, err)
 		assert.Equal(t, walletID.String(), resp.ID)
 		assert.Equal(t, userID.String(), resp.UserID)
-		mockTxManager.AssertExpectations(t)
 		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("insufficient_funds", func(t *testing.T) {
-		mockTxManager := new(MockTxManager)
 		mockRepo := new(MockwalletRepo)
-		mockTx := &MockTx{}
 
-		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
-		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(repo.Wallet{
+		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).Return(repo.Wallet{
 			ID:      pgtype.UUID{Bytes: walletID, Valid: true},
 			UserID:  pgtype.UUID{Bytes: userID, Valid: true},
 			Balance: 100,
 		}, nil)
 
 		svc := &Service{
-			txManager: mockTxManager,
-			repo:      mockRepo,
+			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(ctx, DeductRequest{Amount: 2000})
+		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 2000})
 
 		assert.ErrorIs(t, err, ErrInsufficientFunds)
-		mockTxManager.AssertExpectations(t)
 		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("wallet_not_found", func(t *testing.T) {
-		mockTxManager := new(MockTxManager)
 		mockRepo := new(MockwalletRepo)
-		mockTx := &MockTx{}
-
-		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
-		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).
+		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).
 			Return(repo.Wallet{}, pgx.ErrNoRows)
 
 		svc := &Service{
-			txManager: mockTxManager,
-			repo:      mockRepo,
+			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(ctx, DeductRequest{Amount: 1000})
+		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 1000})
 
 		assert.ErrorIs(t, err, ErrWalletNotFound)
-		mockTxManager.AssertExpectations(t)
 		mockRepo.AssertExpectations(t)
 	})
 
-	t.Run("start_tx_fails", func(t *testing.T) {
-		mockTxManager := new(MockTxManager)
+	t.Run("database_error", func(t *testing.T) {
+		mockRepo := new(MockwalletRepo)
 
-		mockTxManager.On("StartTx", mock.Anything).
-			Return(ctx, nil, errors.New("failed to start tx"))
+		mockRepo.On("GetWalletById", mock.Anything, mock.Anything).Return(repo.Wallet{
+			ID:      pgtype.UUID{Bytes: walletID, Valid: true},
+			UserID:  pgtype.UUID{Bytes: userID, Valid: true},
+			Balance: 5000,
+		}, nil)
+		mockRepo.On("DeductFromBalance", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, errors.New("db error"))
 
 		svc := &Service{
-			txManager: mockTxManager,
-			repo:      nil,
+			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(ctx, DeductRequest{Amount: 1000})
+		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 1000})
 
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to start tx")
-		mockTxManager.AssertExpectations(t)
+		mockRepo.AssertExpectations(t)
 	})
 }
 

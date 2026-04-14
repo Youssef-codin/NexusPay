@@ -257,6 +257,9 @@ func (svc *Service) setBothTransactionsFailed(ctx context.Context, t repo.Transf
 
 func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDResponse, err error) {
 	wallet, err := svc.walletSvc.GetByUserId(ctx)
+	if err != nil {
+		return GetTransfersByIDResponse{}, err
+	}
 
 	walletID, _ := uuid.Parse(wallet.ID)
 	transfers, err := svc.repo.GetTransfersByWalletId(ctx, pgtype.UUID{
