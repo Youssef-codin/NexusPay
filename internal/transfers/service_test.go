@@ -895,6 +895,95 @@ func TestCreateTransfer_HappyPath(t *testing.T) {
 	mockTransfersRepo.AssertExpectations(t)
 }
 
+func TestCreateTransfer_AtomicityProblem(t *testing.T) {
+	userID := uuid.New()
+	senderWalletID := uuid.New()
+	receiverWalletID := uuid.New()
+	ctx := withUserID(context.Background(), userID.String())
+	mockTx := &MockTx{}
+
+	transferID := uuid.New()
+	debitTxID := uuid.New()
+	creditTxID := uuid.New()
+	now := time.Now()
+
+	mockWalletSvc := new(MockWalletSvc)
+	mockTxManager := new(MockTxManager)
+	mockTxSvc := new(MockTransactionsSvc)
+	mockTransfersRepo := new(MockTransfersRepo)
+
+	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+		ID:      senderWalletID.String(),
+		UserID:  userID.String(),
+		Balance: 5000,
+	}, nil)
+	mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
+	mockTxManager.On("Commit", mock.Anything).Return(nil)
+
+	mockTxSvc.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{
+		ID:       debitTxID.String(),
+		WalletID: senderWalletID.String(),
+	}, nil).Once()
+	mockTxSvc.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{
+		ID:       creditTxID.String(),
+		WalletID: receiverWalletID.String(),
+	}, nil).Once()
+
+	mockTransfersRepo.On("CreateTransfer", mock.Anything, mock.Anything).Return(repo.Transfer{
+		ID:                  pgtype.UUID{Bytes: transferID, Valid: true},
+		FromWalletID:        pgtype.UUID{Bytes: senderWalletID, Valid: true},
+		ToWalletID:          pgtype.UUID{Bytes: receiverWalletID, Valid: true},
+		Amount:              1000,
+		Status:              repo.TransferStatusPending,
+		DebitTransactionID:  pgtype.UUID{Bytes: debitTxID, Valid: true},
+		CreditTransactionID: pgtype.UUID{Bytes: creditTxID, Valid: true},
+		CreatedAt:           pgtype.Timestamptz{Time: now, Valid: true},
+		UpdatedAt:           pgtype.Timestamptz{Time: now, Valid: true},
+	}, nil)
+
+	mockWalletSvc.On("GetById", mock.Anything, wallet.GetWalletRequest{ID: senderWalletID.String()}).
+		Return(wallet.GetWalletResponse{
+			ID:      senderWalletID.String(),
+			Balance: 5000,
+		}, nil)
+	mockWalletSvc.On("GetById", mock.Anything, wallet.GetWalletRequest{ID: receiverWalletID.String()}).
+		Return(wallet.GetWalletResponse{
+			ID:      receiverWalletID.String(),
+			Balance: 1000,
+		}, nil)
+	mockWalletSvc.On("DeductFromBalance", mock.Anything, mock.Anything).
+		Return(wallet.DeductResponse{
+			ID:     senderWalletID.String(),
+			Status: "completed",
+		}, nil)
+	mockWalletSvc.On("AddToWallet", mock.Anything, mock.Anything).
+		Return(wallet.AddToWalletResponse{}, errors.New("AddToWallet failed"))
+
+	mockTxSvc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockTransfersRepo.On("UpdateTransferStatus", mock.Anything, mock.Anything).Return(repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusFailed,
+	}, nil)
+
+	svc := &Service{
+		txManager:      mockTxManager,
+		repo:           mockTransfersRepo,
+		walletSvc:      mockWalletSvc,
+		transactionSvc: mockTxSvc,
+	}
+
+	_, err := svc.CreateTransfer(ctx, CreateTransferRequest{
+		ToWalletID: receiverWalletID.String(),
+		Amount:     1000,
+	})
+
+	assert.Error(t, err)
+	t.Logf("commitCalled: %v, rollbackCalled: %v", mockTx.commitCalled, mockTx.rollbackCalled)
+
+	assert.True(t, mockTx.commitCalled, "BUG: Transaction was committed despite AddToWallet failure after DeductFromBalance succeeded - this demonstrates the atomicity bug")
+	assert.False(t, mockTx.rollbackCalled, "Transaction should not have been rolled back (but in correct implementation it should have been)")
+}
+
 func TestGetTransfers_WalletNotFound(t *testing.T) {
 	userID := uuid.New()
 	ctx := withUserID(context.Background(), userID.String())

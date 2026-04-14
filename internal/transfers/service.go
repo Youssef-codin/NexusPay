@@ -264,7 +264,6 @@ func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDRespo
 	walletID, _ := uuid.Parse(wallet.ID)
 	transfers, err := svc.repo.GetTransfersByWalletId(ctx, pgtype.UUID{
 		Bytes: walletID,
-		Valid: true,
 	})
 
 	if err != nil {
