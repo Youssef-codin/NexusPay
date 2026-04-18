@@ -49,10 +49,8 @@ func (svc *Service) GetById(
 		return GetTransactionResponse{}, err
 	}
 
-	parsedId, _ := uuid.Parse(req.ID)
-
 	transaction, err := svc.repo.GetTransactionById(ctx, pgtype.UUID{
-		Bytes: parsedId,
+		Bytes: req.ID,
 		Valid: true,
 	})
 
@@ -64,13 +62,19 @@ func (svc *Service) GetById(
 		return GetTransactionResponse{}, err
 	}
 
+	var transferID *uuid.UUID
+	if transaction.TransferID.Valid {
+		t := uuid.UUID(transaction.TransferID.Bytes)
+		transferID = &t
+	}
+
 	return GetTransactionResponse{
-		ID:          transaction.ID.String(),
-		WalletID:    transaction.WalletID.String(),
+		ID:          uuid.UUID(transaction.ID.Bytes),
+		WalletID:    uuid.UUID(transaction.WalletID.Bytes),
 		Amount:      transaction.Amount,
 		Type:        transaction.Type,
 		Status:      transaction.Status,
-		TransferID:  new(transaction.TransferID.String()),
+		TransferID:  transferID,
 		CreatedAt:   transaction.CreatedAt.Time,
 		UpdatedAt:   transaction.UpdatedAt.Time,
 		DeletedAt:   &transaction.DeletedAt.Time,
@@ -86,11 +90,9 @@ func (svc *Service) CreateTransaction(
 		return CreateTransactionResponse{}, err
 	}
 
-	parsedWalletID, _ := uuid.Parse(req.WalletID)
-
 	transaction, err := svc.repo.CreateTransaction(ctx, repo.CreateTransactionParams{
 		WalletID: pgtype.UUID{
-			Bytes: parsedWalletID,
+			Bytes: req.WalletID,
 			Valid: true,
 		},
 		Amount:     req.Amount,
@@ -108,8 +110,8 @@ func (svc *Service) CreateTransaction(
 	}
 
 	return CreateTransactionResponse{
-		ID:          transaction.ID.String(),
-		WalletID:    transaction.WalletID.String(),
+		ID:          uuid.UUID(transaction.ID.Bytes),
+		WalletID:    uuid.UUID(transaction.WalletID.Bytes),
 		Amount:      transaction.Amount,
 		Type:        transaction.Type,
 		Status:      transaction.Status,
@@ -126,10 +128,8 @@ func (svc *Service) UpdateStatus(
 		return err
 	}
 
-	parsedId, _ := uuid.Parse(req.ID)
-
 	transaction, err := svc.repo.GetTransactionById(ctx, pgtype.UUID{
-		Bytes: parsedId,
+		Bytes: req.ID,
 		Valid: true,
 	})
 
@@ -177,7 +177,7 @@ func (svc *Service) UpdateStatus(
 
 	_, err = svc.repo.UpdateTransactionStatus(ctx, repo.UpdateTransactionStatusParams{
 		ID: pgtype.UUID{
-			Bytes: parsedId,
+			Bytes: req.ID,
 			Valid: true,
 		},
 		Status: req.Status,

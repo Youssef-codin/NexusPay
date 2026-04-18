@@ -64,15 +64,15 @@ func TestCreateTransaction(t *testing.T) {
 
 		svc := &Service{repo: mockRepo}
 		resp, err := svc.CreateTransaction(ctx, CreateTransactionRequest{
-			WalletID:    walletID.String(),
+			WalletID:    walletID,
 			Amount:      1000,
 			Type:        repo.TransactionTypeCredit,
 			Description: "Test transaction",
 		})
 
 		assert.NoError(t, err)
-		assert.Equal(t, transactionID.String(), resp.ID)
-		assert.Equal(t, walletID.String(), resp.WalletID)
+		assert.Equal(t, transactionID, resp.ID)
+		assert.Equal(t, walletID, resp.WalletID)
 		assert.Equal(t, int64(1000), resp.Amount)
 		assert.Equal(t, repo.TransactionTypeCredit, resp.Type)
 		mockRepo.AssertExpectations(t)
@@ -84,7 +84,7 @@ func TestCreateTransaction(t *testing.T) {
 
 		svc := &Service{repo: mockRepo}
 		_, err := svc.CreateTransaction(ctx, CreateTransactionRequest{
-			WalletID:    walletID.String(),
+			WalletID:    walletID,
 			Amount:      1000,
 			Type:        repo.TransactionTypeCredit,
 			Description: "Test transaction",
@@ -115,11 +115,11 @@ func TestGetById(t *testing.T) {
 		}, nil)
 
 		svc := &Service{repo: mockRepo}
-		resp, err := svc.GetById(ctx, GetByIdRequest{ID: transactionID.String()})
+		resp, err := svc.GetById(ctx, GetByIdRequest{ID: transactionID})
 
 		assert.NoError(t, err)
-		assert.Equal(t, transactionID.String(), resp.ID)
-		assert.Equal(t, walletID.String(), resp.WalletID)
+		assert.Equal(t, transactionID, resp.ID)
+		assert.Equal(t, walletID, resp.WalletID)
 		mockRepo.AssertExpectations(t)
 	})
 
@@ -128,7 +128,7 @@ func TestGetById(t *testing.T) {
 		mockRepo.On("GetTransactionById", mock.Anything, mock.Anything).Return(repo.Transaction{}, pgx.ErrNoRows)
 
 		svc := &Service{repo: mockRepo}
-		_, err := svc.GetById(ctx, GetByIdRequest{ID: uuid.New().String()})
+		_, err := svc.GetById(ctx, GetByIdRequest{ID: uuid.New()})
 
 		assert.ErrorIs(t, err, ErrTransactionNotFound)
 		mockRepo.AssertExpectations(t)
@@ -139,7 +139,7 @@ func TestGetById(t *testing.T) {
 		mockRepo.On("GetTransactionById", mock.Anything, mock.Anything).Return(repo.Transaction{}, errors.New("db error"))
 
 		svc := &Service{repo: mockRepo}
-		_, err := svc.GetById(ctx, GetByIdRequest{ID: uuid.New().String()})
+		_, err := svc.GetById(ctx, GetByIdRequest{ID: uuid.New()})
 
 		assert.Error(t, err)
 		assert.NotEqual(t, ErrTransactionNotFound, err)
@@ -181,7 +181,7 @@ func TestUpdateStatus(t *testing.T) {
 
 			svc := &Service{repo: mockRepo}
 			err := svc.UpdateStatus(ctx, UpdateTransactionRequest{
-				ID:     transactionID.String(),
+				ID:     transactionID,
 				Status: tt.to,
 			})
 
@@ -215,7 +215,7 @@ func TestUpdateStatus(t *testing.T) {
 
 			svc := &Service{repo: mockRepo}
 			err := svc.UpdateStatus(ctx, UpdateTransactionRequest{
-				ID:     transactionID.String(),
+				ID:     transactionID,
 				Status: tt.to,
 			})
 
@@ -234,7 +234,7 @@ func TestUpdateStatus(t *testing.T) {
 
 		svc := &Service{repo: mockRepo}
 		err := svc.UpdateStatus(ctx, UpdateTransactionRequest{
-			ID:     transactionID.String(),
+			ID:     transactionID,
 			Status: repo.TransactionStatusPending,
 		})
 
@@ -248,7 +248,7 @@ func TestUpdateStatus(t *testing.T) {
 
 		svc := &Service{repo: mockRepo}
 		err := svc.UpdateStatus(ctx, UpdateTransactionRequest{
-			ID:     uuid.New().String(),
+			ID:     uuid.New(),
 			Status: repo.TransactionStatusProcessing,
 		})
 
@@ -267,7 +267,7 @@ func TestUpdateStatus(t *testing.T) {
 
 		svc := &Service{repo: mockRepo}
 		err := svc.UpdateStatus(ctx, UpdateTransactionRequest{
-			ID:     transactionID.String(),
+			ID:     transactionID,
 			Status: repo.TransactionStatusProcessing,
 		})
 

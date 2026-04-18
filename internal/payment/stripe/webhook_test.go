@@ -151,14 +151,14 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 
 		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 		mockTxSvc.On("GetById", mock.Anything, mock.Anything).Return(transactions.GetTransactionResponse{
-			ID:       transactionID.String(),
-			WalletID: walletID.String(),
+			ID:       transactionID,
+			WalletID: walletID,
 			Amount:   1000,
 			Status:   repo.TransactionStatusPending,
 		}, nil)
 		mockTxSvc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil).Twice()
 		mockWalletSvc.On("AddToWallet", mock.Anything, mock.Anything).Return(wallet.AddToWalletResponse{
-			ID:      walletID.String(),
+			ID:      walletID,
 			Balance: 1000,
 		}, nil)
 
@@ -169,7 +169,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentSucceeded(ctx, HandlePaymentSucceededRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.NoError(t, err)
@@ -195,7 +195,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentSucceeded(ctx, HandlePaymentSucceededRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.Error(t, err)
@@ -211,7 +211,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 
 		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 		mockTxSvc.On("GetById", mock.Anything, mock.Anything).Return(transactions.GetTransactionResponse{
-			ID:     transactionID.String(),
+			ID:     transactionID,
 			Status: repo.TransactionStatusProcessing,
 		}, nil)
 
@@ -222,7 +222,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentSucceeded(ctx, HandlePaymentSucceededRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.ErrorIs(t, err, ErrAlreadyProcessing)
@@ -237,7 +237,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 
 		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 		mockTxSvc.On("GetById", mock.Anything, mock.Anything).Return(transactions.GetTransactionResponse{
-			ID:     transactionID.String(),
+			ID:     transactionID,
 			Status: repo.TransactionStatusPending,
 		}, nil)
 		mockTxSvc.On("UpdateStatus", mock.Anything, mock.Anything).Return(errors.New("db error"))
@@ -249,7 +249,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentSucceeded(ctx, HandlePaymentSucceededRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.Error(t, err)
@@ -264,8 +264,8 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 
 		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 		mockTxSvc.On("GetById", mock.Anything, mock.Anything).Return(transactions.GetTransactionResponse{
-			ID:       transactionID.String(),
-			WalletID: walletID.String(),
+			ID:       transactionID,
+			WalletID: walletID,
 			Amount:   1000,
 			Status:   repo.TransactionStatusPending,
 		}, nil)
@@ -279,7 +279,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentSucceeded(ctx, HandlePaymentSucceededRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.Error(t, err)
@@ -296,14 +296,14 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 
 		mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 		mockTxSvc.On("GetById", mock.Anything, mock.Anything).Return(transactions.GetTransactionResponse{
-			ID:       transactionID.String(),
-			WalletID: walletID.String(),
+			ID:       transactionID,
+			WalletID: walletID,
 			Amount:   1000,
 			Status:   repo.TransactionStatusPending,
 		}, nil)
 		mockTxSvc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil).Twice()
 		mockWalletSvc.On("AddToWallet", mock.Anything, mock.Anything).Return(wallet.AddToWalletResponse{
-			ID:      walletID.String(),
+			ID:      walletID,
 			Balance: 1000,
 		}, nil)
 
@@ -314,7 +314,7 @@ func TestHandlePaymentSucceeded(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentSucceeded(ctx, HandlePaymentSucceededRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.Error(t, err)
@@ -340,7 +340,7 @@ func TestHandlePaymentFailed(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentFailed(ctx, HandlePaymentFailedRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.NoError(t, err)
@@ -359,7 +359,7 @@ func TestHandlePaymentFailed(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentFailed(ctx, HandlePaymentFailedRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.ErrorIs(t, err, transactions.ErrTransactionNotFound)
@@ -383,7 +383,7 @@ func TestHandlePaymentCanceled(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentCanceled(ctx, HandlePaymentCanceledRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.NoError(t, err)
@@ -402,7 +402,7 @@ func TestHandlePaymentCanceled(t *testing.T) {
 		}
 
 		err := svc.HandlePaymentCanceled(ctx, HandlePaymentCanceledRequest{
-			TransactionID: transactionID.String(),
+			TransactionID: transactionID,
 		})
 
 		assert.ErrorIs(t, err, transactions.ErrTransactionNotFound)

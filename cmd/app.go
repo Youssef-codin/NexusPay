@@ -88,6 +88,10 @@ func (app *application) mount() http.Handler {
 	)
 	TransfersHandler := transfers.NewHandler(TransfersService)
 
+	TransfersScheduler := transfers.NewScheduler(TransfersService, app.db, TransfersRepo)
+	TransfersScheduler.Start()
+	app.transfersScheduler = TransfersScheduler
+
 	WebhookService := stripe.NewWebhookService(app.db, WalletService, TransactionsService)
 	WebhookHandler := stripe.NewWebhookHandler(
 		app.config.stripe.webhookSecret,
@@ -136,6 +140,13 @@ func (app *application) mount() http.Handler {
 			r.Use(api.NewUserLimiter(10, app.redis))
 			r.Get("/", api.Wrap(TransfersHandler.GetTransfers))
 			r.Post("/", api.Wrap(TransfersHandler.CreateTransfer))
+
+			r.Route("/scheduled", func(r chi.Router) {
+				r.Get("/", api.Wrap(TransfersHandler.GetScheduledTransfers))
+				r.Delete("/{id}", api.Wrap(TransfersHandler.DeleteScheduledTransfer))
+			})
+
+			r.Get("/{id}", api.Wrap(TransfersHandler.GetTransferByID))
 		})
 	})
 
@@ -178,6 +189,11 @@ func (app *application) run(h http.Handler) error {
 
 	<-ctx.Done()
 
+	log.Println("Shutting down transfers scheduler...")
+	if err := app.transfersScheduler.Stop(); err != nil {
+		log.Printf("Scheduler shutdown error: %v", err)
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -185,10 +201,11 @@ func (app *application) run(h http.Handler) error {
 }
 
 type application struct {
-	config    config
-	db        *db.DB
-	redis     *redis.Client
-	redisOpts *redis.Options
+	config           config
+	db               *db.DB
+	redis            *redis.Client
+	redisOpts        *redis.Options
+	transfersScheduler *transfers.Scheduler
 }
 
 type stripeConfig struct {

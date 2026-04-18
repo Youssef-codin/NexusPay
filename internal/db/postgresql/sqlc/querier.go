@@ -12,11 +12,17 @@ import (
 
 type Querier interface {
 	AddToBalance(ctx context.Context, arg AddToBalanceParams) (Wallet, error)
+	CancelScheduledTransfer(ctx context.Context, id pgtype.UUID) (ScheduledTransfer, error)
+	CreateScheduledTransfer(ctx context.Context, arg CreateScheduledTransferParams) (ScheduledTransfer, error)
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (CreateTransactionRow, error)
 	CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	CreateWallet(ctx context.Context, arg CreateWalletParams) (CreateWalletRow, error)
 	DeductFromBalance(ctx context.Context, arg DeductFromBalanceParams) (Wallet, error)
+	GetPendingScheduledTransfers(ctx context.Context, scheduledAt pgtype.Timestamptz) ([]ScheduledTransfer, error)
+	GetScheduledTransferById(ctx context.Context, id pgtype.UUID) (ScheduledTransfer, error)
+	GetScheduledTransferByTransferId(ctx context.Context, transferID pgtype.UUID) (ScheduledTransfer, error)
+	GetScheduledTransfersByUserId(ctx context.Context, userID pgtype.UUID) ([]ScheduledTransfer, error)
 	GetTransactionById(ctx context.Context, id pgtype.UUID) (Transaction, error)
 	GetTransactionByTransferId(ctx context.Context, transferID pgtype.UUID) (Transaction, error)
 	GetTransactionsByWalletId(ctx context.Context, walletID pgtype.UUID) ([]Transaction, error)
@@ -28,6 +34,7 @@ type Querier interface {
 	GetUserByRefreshToken(ctx context.Context, refreshToken pgtype.Text) (User, error)
 	GetWalletById(ctx context.Context, id pgtype.UUID) (Wallet, error)
 	GetWalletByUserId(ctx context.Context, userID pgtype.UUID) (Wallet, error)
+	MarkScheduledTransferExecuted(ctx context.Context, id pgtype.UUID) (ScheduledTransfer, error)
 	RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error
 	SoftDeleteUser(ctx context.Context, id pgtype.UUID) error
 	UpdateRefreshToken(ctx context.Context, arg UpdateRefreshTokenParams) error

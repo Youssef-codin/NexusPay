@@ -1,13 +1,15 @@
 package stripe
 
+import "github.com/google/uuid"
+
 type HandlePaymentSucceededRequest struct {
-	TransactionID string
+	TransactionID uuid.UUID
 }
 
 type HandlePaymentFailedRequest struct {
-	TransactionID string
+	TransactionID uuid.UUID
 }
 
 type HandlePaymentCanceledRequest struct {
-	TransactionID string
+	TransactionID uuid.UUID
 }

@@ -3,6 +3,7 @@ package users
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -19,8 +20,8 @@ func TestHelper_FindUserRequest_Validation(t *testing.T) {
 func TestHelper_FindUserResponse(t *testing.T) {
 	resp := FindUserResponse{
 		Users: []UserType{
-			{ID: "123", FullName: "John Doe"},
-			{ID: "456", FullName: "Jane Doe"},
+			{ID: uuid.MustParse("00000000-0000-0000-0000-000000000123"), FullName: "John Doe"},
+			{ID: uuid.MustParse("00000000-0000-0000-0000-000000000456"), FullName: "Jane Doe"},
 		},
 	}
 
@@ -31,12 +32,12 @@ func TestHelper_FindUserResponse(t *testing.T) {
 
 func TestHelper_UserType(t *testing.T) {
 	user := UserType{
-		ID:       "123",
+		ID:       uuid.MustParse("00000000-0000-0000-0000-000000000123"),
 		FullName: "John Doe",
 	}
 
-	if user.ID != "123" {
-		t.Errorf("expected ID '123', got '%s'", user.ID)
+	if user.ID != uuid.MustParse("00000000-0000-0000-0000-000000000123") {
+		t.Errorf("expected ID, got '%s'", user.ID)
 	}
 	if user.FullName != "John Doe" {
 		t.Errorf("expected FullName 'John Doe', got '%s'", user.FullName)
