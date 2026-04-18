@@ -58,10 +58,8 @@ func NewService(
 }
 
 func (svc *Service) GetById(ctx context.Context, req GetWalletRequest) (GetWalletResponse, error) {
-	parsedId, _ := uuid.Parse(req.ID)
-
 	wallet, err := svc.repo.GetWalletById(ctx, pgtype.UUID{
-		Bytes: parsedId,
+		Bytes: req.ID,
 		Valid: true,
 	})
 
@@ -73,8 +71,8 @@ func (svc *Service) GetById(ctx context.Context, req GetWalletRequest) (GetWalle
 	}
 
 	return GetWalletResponse{
-		ID:        wallet.ID.String(),
-		UserID:    wallet.UserID.String(),
+		ID:        uuid.UUID(wallet.ID.Bytes),
+		UserID:    uuid.UUID(wallet.UserID.Bytes),
 		Balance:   wallet.Balance,
 		CreatedAt: wallet.CreatedAt.Time,
 		UpdatedAt: wallet.UpdatedAt.Time,
@@ -102,8 +100,8 @@ func (svc *Service) GetByUserId(ctx context.Context) (GetWalletResponse, error) 
 	}
 
 	return GetWalletResponse{
-		ID:        wallet.ID.String(),
-		UserID:    wallet.UserID.String(),
+		ID:        uuid.UUID(wallet.ID.Bytes),
+		UserID:    uuid.UUID(wallet.UserID.Bytes),
 		Balance:   wallet.Balance,
 		CreatedAt: wallet.CreatedAt.Time,
 		UpdatedAt: wallet.UpdatedAt.Time,
@@ -115,10 +113,8 @@ func (svc *Service) CreateWallet(
 	ctx context.Context,
 	req CreateWalletRequest,
 ) (CreateWalletResponse, error) {
-	parsedId, _ := uuid.Parse(req.UserID)
-
 	_, err := svc.repo.GetWalletByUserId(ctx, pgtype.UUID{
-		Bytes: parsedId,
+		Bytes: req.UserID,
 		Valid: true,
 	})
 
@@ -132,7 +128,7 @@ func (svc *Service) CreateWallet(
 
 	wallet, err := svc.repo.CreateWallet(ctx, repo.CreateWalletParams{
 		UserID: pgtype.UUID{
-			Bytes: parsedId,
+			Bytes: req.UserID,
 			Valid: true,
 		},
 		Balance: 0,
@@ -143,8 +139,8 @@ func (svc *Service) CreateWallet(
 	}
 
 	return CreateWalletResponse{
-		ID:        wallet.ID.String(),
-		UserID:    wallet.UserID.String(),
+		ID:        uuid.UUID(wallet.ID.Bytes),
+		UserID:    uuid.UUID(wallet.UserID.Bytes),
 		Balance:   wallet.Balance,
 		CreatedAt: wallet.CreatedAt.Time,
 	}, nil
@@ -163,11 +159,10 @@ func (svc *Service) TopUp(
 	if err != nil {
 		return TopUpResponse{}, err
 	}
-
-	parsedId, _ := uuid.Parse(id)
+	userUUID, _ := uuid.Parse(id)
 
 	wallet, err := svc.repo.GetWalletByUserId(ctx, pgtype.UUID{
-		Bytes: parsedId,
+		Bytes: userUUID,
 		Valid: true,
 	})
 
@@ -181,7 +176,7 @@ func (svc *Service) TopUp(
 	transaction, err := svc.transactionsSvc.CreateTransaction(
 		ctx,
 		transactions.CreateTransactionRequest{
-			WalletID:    wallet.ID.String(),
+			WalletID:    uuid.UUID(wallet.ID.Bytes),
 			Amount:      req.Amount,
 			Type:        repo.TransactionTypeCredit,
 			Description: req.Description,
@@ -207,8 +202,8 @@ func (svc *Service) TopUp(
 	}
 
 	return TopUpResponse{
-		ID:                wallet.ID.String(),
-		UserID:            parsedId.String(),
+		ID:                uuid.UUID(wallet.ID.Bytes),
+		UserID:            userUUID,
 		Status:            string(paymentRes.Status),
 		UpdatedAt:         wallet.UpdatedAt.Time,
 		ProviderPaymentID: paymentRes.ProviderPaymentID,
@@ -220,10 +215,8 @@ func (svc *Service) DeductFromBalance(
 	ctx context.Context,
 	req DeductRequest,
 ) (DeductResponse, error) {
-	parsedId, _ := uuid.Parse(req.WalletID)
-
 	wallet, err := svc.repo.GetWalletById(ctx, pgtype.UUID{
-		Bytes: parsedId,
+		Bytes: req.WalletID,
 		Valid: true,
 	})
 
@@ -251,8 +244,8 @@ func (svc *Service) DeductFromBalance(
 	}
 
 	return DeductResponse{
-		ID:        newWallet.ID.String(),
-		UserID:    uuid.UUID(wallet.UserID.Bytes).String(),
+		ID:        uuid.UUID(newWallet.ID.Bytes),
+		UserID:    uuid.UUID(wallet.UserID.Bytes),
 		Status:    string(repo.TransactionStatusCompleted),
 		UpdatedAt: newWallet.UpdatedAt.Time,
 	}, nil
@@ -262,10 +255,8 @@ func (svc *Service) AddToWallet(
 	ctx context.Context,
 	req AddToWalletRequest,
 ) (AddToWalletResponse, error) {
-	parsedId, _ := uuid.Parse(req.WalletID)
-
 	wallet, err := svc.repo.GetWalletById(ctx, pgtype.UUID{
-		Bytes: parsedId,
+		Bytes: req.WalletID,
 		Valid: true,
 	})
 
@@ -286,8 +277,8 @@ func (svc *Service) AddToWallet(
 	}
 
 	return AddToWalletResponse{
-		ID:        updatedWallet.ID.String(),
-		UserID:    uuid.UUID(wallet.UserID.Bytes).String(),
+		ID:        uuid.UUID(updatedWallet.ID.Bytes),
+		UserID:    uuid.UUID(wallet.UserID.Bytes),
 		Balance:   updatedWallet.Balance,
 		UpdatedAt: updatedWallet.UpdatedAt.Time,
 	}, nil

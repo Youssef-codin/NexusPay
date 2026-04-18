@@ -1,5 +1,7 @@
 package users
 
+import "github.com/google/uuid"
+
 type FindUserRequest struct {
 	FullName string `json:"full_name" validate:"required,min=2,max=100"`
 }
@@ -9,6 +11,6 @@ type FindUserResponse struct {
 }
 
 type UserType struct {
-	ID       string `json:"id"`
-	FullName string `json:"full_name"`
+	ID       uuid.UUID `json:"id"`
+	FullName string    `json:"full_name"`
 }

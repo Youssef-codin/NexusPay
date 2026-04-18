@@ -320,7 +320,7 @@ func TestTopUp(t *testing.T) {
 				}, nil)
 				mt.On("CreateTransaction", mock.Anything, mock.Anything).
 					Return(transactions.CreateTransactionResponse{
-						ID:     uuid.New().String(),
+						ID:     uuid.New(),
 						Status: repo.TransactionStatusPending,
 					}, nil)
 				mp.On("ProcessPayment", mock.Anything, mock.Anything).
@@ -343,7 +343,7 @@ func TestTopUp(t *testing.T) {
 				}, nil)
 				mt.On("CreateTransaction", mock.Anything, mock.Anything).
 					Return(transactions.CreateTransactionResponse{
-						ID:     uuid.New().String(),
+						ID:     uuid.New(),
 						Status: repo.TransactionStatusPending,
 					}, nil)
 				mp.On("ProcessPayment", mock.Anything, mock.Anything).
@@ -411,11 +411,11 @@ func TestGetById(t *testing.T) {
 		}, nil)
 
 		svc := &Service{repo: mockRepo}
-		resp, err := svc.GetById(ctx, GetWalletRequest{ID: walletID.String()})
+		resp, err := svc.GetById(ctx, GetWalletRequest{ID: walletID})
 
 		assert.NoError(t, err)
-		assert.Equal(t, walletID.String(), resp.ID)
-		assert.Equal(t, userID.String(), resp.UserID)
+		assert.Equal(t, walletID, resp.ID)
+		assert.Equal(t, userID, resp.UserID)
 		assert.Equal(t, int64(5000), resp.Balance)
 		mockRepo.AssertExpectations(t)
 	})
@@ -426,7 +426,7 @@ func TestGetById(t *testing.T) {
 			Return(repo.Wallet{}, pgx.ErrNoRows)
 
 		svc := &Service{repo: mockRepo}
-		_, err := svc.GetById(ctx, GetWalletRequest{ID: uuid.New().String()})
+		_, err := svc.GetById(ctx, GetWalletRequest{ID: uuid.New()})
 
 		assert.ErrorIs(t, err, ErrWalletNotFound)
 		mockRepo.AssertExpectations(t)
@@ -438,7 +438,7 @@ func TestGetById(t *testing.T) {
 			Return(repo.Wallet{}, errors.New("connection error"))
 
 		svc := &Service{repo: mockRepo}
-		_, err := svc.GetById(ctx, GetWalletRequest{ID: uuid.New().String()})
+		_, err := svc.GetById(ctx, GetWalletRequest{ID: uuid.New()})
 
 		assert.Error(t, err)
 		assert.NotEqual(t, ErrWalletNotFound, err)
@@ -466,8 +466,8 @@ func TestGetByUserId(t *testing.T) {
 		resp, err := svc.GetByUserId(ctx)
 
 		assert.NoError(t, err)
-		assert.Equal(t, walletID.String(), resp.ID)
-		assert.Equal(t, userID.String(), resp.UserID)
+		assert.Equal(t, walletID, resp.ID)
+		assert.Equal(t, userID, resp.UserID)
 		mockRepo.AssertExpectations(t)
 	})
 
@@ -506,8 +506,8 @@ func TestCreateWallet(t *testing.T) {
 		resp, err := svc.CreateWallet(ctx, CreateWalletRequest{})
 
 		assert.NoError(t, err)
-		assert.Equal(t, walletID.String(), resp.ID)
-		assert.Equal(t, userID.String(), resp.UserID)
+		assert.Equal(t, walletID, resp.ID)
+		assert.Equal(t, userID, resp.UserID)
 		assert.Equal(t, int64(0), resp.Balance)
 		mockRepo.AssertExpectations(t)
 	})
@@ -565,11 +565,11 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		resp, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 2000})
+		resp, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 2000})
 
 		assert.NoError(t, err)
-		assert.Equal(t, walletID.String(), resp.ID)
-		assert.Equal(t, userID.String(), resp.UserID)
+		assert.Equal(t, walletID, resp.ID)
+		assert.Equal(t, userID, resp.UserID)
 		mockRepo.AssertExpectations(t)
 	})
 
@@ -585,7 +585,7 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 2000})
+		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 2000})
 
 		assert.ErrorIs(t, err, ErrInsufficientFunds)
 		mockRepo.AssertExpectations(t)
@@ -599,7 +599,7 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 1000})
+		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 1000})
 
 		assert.ErrorIs(t, err, ErrWalletNotFound)
 		mockRepo.AssertExpectations(t)
@@ -619,7 +619,7 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID.String(), Amount: 1000})
+		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 1000})
 
 		assert.Error(t, err)
 		mockRepo.AssertExpectations(t)
@@ -654,12 +654,12 @@ func TestAddToWallet(t *testing.T) {
 			repo:      mockRepo,
 		}
 		resp, err := svc.AddToWallet(ctx, AddToWalletRequest{
-			WalletID: walletID.String(),
+			WalletID: walletID,
 			Amount:   1000,
 		})
 
 		assert.NoError(t, err)
-		assert.Equal(t, walletID.String(), resp.ID)
+		assert.Equal(t, walletID, resp.ID)
 		assert.Equal(t, int64(3000), resp.Balance)
 		mockRepo.AssertExpectations(t)
 	})
@@ -671,7 +671,7 @@ func TestAddToWallet(t *testing.T) {
 
 		svc := &Service{repo: mockRepo}
 		_, err := svc.AddToWallet(ctx, AddToWalletRequest{
-			WalletID: walletID.String(),
+			WalletID: walletID,
 			Amount:   1000,
 		})
 

@@ -1,5 +1,7 @@
 package payment
 
+import "github.com/google/uuid"
+
 type PaymentStatus string
 
 const (
@@ -10,7 +12,7 @@ const (
 
 type ProcessPaymentRequest struct {
 	Amount        int64
-	TransactionID string
+	TransactionID uuid.UUID
 	Description   string
 }
 

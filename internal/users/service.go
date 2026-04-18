@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -41,7 +42,7 @@ func (svc *Service) findByName(ctx context.Context, req FindUserRequest) (FindUs
 	cleanUsers := make([]UserType, 0, len(users))
 	for _, user := range users {
 		cleanUsers = append(cleanUsers, UserType{
-			ID:       user.ID.String(),
+			ID:       uuid.UUID(user.ID.Bytes),
 			FullName: user.FullName,
 		})
 	}

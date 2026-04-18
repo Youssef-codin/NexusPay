@@ -32,13 +32,13 @@ func (svc *Service) ProcessPayment(
 ) (payment.ProcessPaymentResponse, error) {
 	params := &stripe.PaymentIntentParams{
 		Params: stripe.Params{
-			IdempotencyKey: stripe.String(req.TransactionID),
+			IdempotencyKey: stripe.String(req.TransactionID.String()),
 		},
 		Amount:      new(req.Amount),
 		Currency:    new("egp"),
 		Description: new(req.Description),
 		Metadata: map[string]string{
-			"transaction_id": req.TransactionID,
+			"transaction_id": req.TransactionID.String(),
 		},
 		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
 			Enabled:        new(true),

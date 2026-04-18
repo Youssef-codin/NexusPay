@@ -141,7 +141,7 @@ func (svc *Service) register(ctx context.Context, req registerRequest) (register
 	}
 
 	_, err = svc.wallet.CreateWallet(txCtx, wallet.CreateWalletRequest{
-		UserID: user.ID.String(),
+		UserID: uuid.UUID(user.ID.Bytes),
 	})
 
 	if err != nil {

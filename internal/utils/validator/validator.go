@@ -25,6 +25,7 @@ func init() {
 			repo.TransactionStatusProcessing,
 			repo.TransactionStatusCompleted,
 			repo.TransactionStatusFailed,
+			repo.TransactionStatusCancelled,
 			repo.TransactionStatusReversed,
 			repo.TransactionStatusReversing:
 			return true
@@ -44,7 +45,8 @@ func init() {
 		switch repo.TransferStatus(fl.Field().String()) {
 		case repo.TransferStatusPending,
 			repo.TransferStatusCompleted,
-			repo.TransferStatusFailed:
+			repo.TransferStatusFailed,
+			repo.TransferStatusCancelled:
 			return true
 		}
 		return false

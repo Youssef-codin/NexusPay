@@ -20,6 +20,13 @@ type transfersRepo interface {
 	) (repo.Transfer, error)
 	GetTransferById(ctx context.Context, id pgtype.UUID) (repo.Transfer, error)
 	GetTransfersByWalletId(ctx context.Context, toWalletID pgtype.UUID) ([]repo.Transfer, error)
+	CreateScheduledTransfer(ctx context.Context, arg repo.CreateScheduledTransferParams) (repo.ScheduledTransfer, error)
+	GetScheduledTransferById(ctx context.Context, id pgtype.UUID) (repo.ScheduledTransfer, error)
+	GetScheduledTransferByTransferId(ctx context.Context, transferID pgtype.UUID) (repo.ScheduledTransfer, error)
+	GetPendingScheduledTransfers(ctx context.Context, at pgtype.Timestamptz) ([]repo.ScheduledTransfer, error)
+	MarkScheduledTransferExecuted(ctx context.Context, id pgtype.UUID) (repo.ScheduledTransfer, error)
+	CancelScheduledTransfer(ctx context.Context, id pgtype.UUID) (repo.ScheduledTransfer, error)
+	GetScheduledTransfersByUserId(ctx context.Context, userID pgtype.UUID) ([]repo.ScheduledTransfer, error)
 }
 
 type TransfersRepo struct {
@@ -64,4 +71,53 @@ func (r *TransfersRepo) GetTransfersByWalletId(
 	walletID pgtype.UUID,
 ) ([]repo.Transfer, error) {
 	return r.db.GetDBTX(ctx).GetTransfersByWalletId(ctx, walletID)
+}
+
+func (r *TransfersRepo) CreateScheduledTransfer(
+	ctx context.Context,
+	arg repo.CreateScheduledTransferParams,
+) (repo.ScheduledTransfer, error) {
+	return r.db.GetDBTX(ctx).CreateScheduledTransfer(ctx, arg)
+}
+
+func (r *TransfersRepo) GetScheduledTransferById(
+	ctx context.Context,
+	id pgtype.UUID,
+) (repo.ScheduledTransfer, error) {
+	return r.db.GetDBTX(ctx).GetScheduledTransferById(ctx, id)
+}
+
+func (r *TransfersRepo) GetScheduledTransferByTransferId(
+	ctx context.Context,
+	transferID pgtype.UUID,
+) (repo.ScheduledTransfer, error) {
+	return r.db.GetDBTX(ctx).GetScheduledTransferByTransferId(ctx, transferID)
+}
+
+func (r *TransfersRepo) GetPendingScheduledTransfers(
+	ctx context.Context,
+	at pgtype.Timestamptz,
+) ([]repo.ScheduledTransfer, error) {
+	return r.db.GetDBTX(ctx).GetPendingScheduledTransfers(ctx, at)
+}
+
+func (r *TransfersRepo) MarkScheduledTransferExecuted(
+	ctx context.Context,
+	id pgtype.UUID,
+) (repo.ScheduledTransfer, error) {
+	return r.db.GetDBTX(ctx).MarkScheduledTransferExecuted(ctx, id)
+}
+
+func (r *TransfersRepo) CancelScheduledTransfer(
+	ctx context.Context,
+	id pgtype.UUID,
+) (repo.ScheduledTransfer, error) {
+	return r.db.GetDBTX(ctx).CancelScheduledTransfer(ctx, id)
+}
+
+func (r *TransfersRepo) GetScheduledTransfersByUserId(
+	ctx context.Context,
+	userID pgtype.UUID,
+) ([]repo.ScheduledTransfer, error) {
+	return r.db.GetDBTX(ctx).GetScheduledTransfersByUserId(ctx, userID)
 }

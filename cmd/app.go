@@ -88,6 +88,9 @@ func (app *application) mount() http.Handler {
 	)
 	TransfersHandler := transfers.NewHandler(TransfersService)
 
+	TransfersScheduler := transfers.NewScheduler(TransfersService, app.db, TransfersRepo)
+	TransfersScheduler.Start()
+
 	WebhookService := stripe.NewWebhookService(app.db, WalletService, TransactionsService)
 	WebhookHandler := stripe.NewWebhookHandler(
 		app.config.stripe.webhookSecret,
@@ -136,6 +139,9 @@ func (app *application) mount() http.Handler {
 			r.Use(api.NewUserLimiter(10, app.redis))
 			r.Get("/", api.Wrap(TransfersHandler.GetTransfers))
 			r.Post("/", api.Wrap(TransfersHandler.CreateTransfer))
+			r.Get("/{id}", api.Wrap(TransfersHandler.GetTransferByID))
+			r.Get("/scheduled", api.Wrap(TransfersHandler.GetScheduledTransfers))
+			r.Delete("/scheduled/{id}", api.Wrap(TransfersHandler.DeleteScheduledTransfer))
 		})
 	})
 

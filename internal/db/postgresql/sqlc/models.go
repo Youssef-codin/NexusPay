@@ -20,6 +20,7 @@ const (
 	TransactionStatusFailed     TransactionStatus = "failed"
 	TransactionStatusReversed   TransactionStatus = "reversed"
 	TransactionStatusReversing  TransactionStatus = "reversing"
+	TransactionStatusCancelled  TransactionStatus = "cancelled"
 )
 
 func (e *TransactionStatus) Scan(src interface{}) error {
@@ -105,6 +106,7 @@ const (
 	TransferStatusPending   TransferStatus = "pending"
 	TransferStatusCompleted TransferStatus = "completed"
 	TransferStatusFailed    TransferStatus = "failed"
+	TransferStatusCancelled TransferStatus = "cancelled"
 )
 
 func (e *TransferStatus) Scan(src interface{}) error {

@@ -1,14 +1,18 @@
 package wallet
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type GetWalletRequest struct {
-	ID string `json:"id" validate:"required,uuid"`
+	ID uuid.UUID `json:"id" validate:"required,uuid"`
 }
 
 type CreateWalletRequest struct {
-	UserID  string `json:"user_id"`
-	Balance int64  `json:"balance_in_piastres"`
+	UserID  uuid.UUID `json:"user_id"`
+	Balance int64     `json:"balance_in_piastres"`
 }
 
 type TopUpRequest struct {
@@ -17,25 +21,25 @@ type TopUpRequest struct {
 }
 
 type DeductRequest struct {
-	WalletID string `json:"wallet_id" validate:"required,uuid"`
-	Amount   int64  `json:"amount_in_piastres" validate:"min=1"`
+	WalletID uuid.UUID `json:"wallet_id" validate:"required,uuid"`
+	Amount   int64     `json:"amount_in_piastres" validate:"min=1"`
 }
 
 type AddToWalletRequest struct {
-	WalletID string `json:"wallet_id"          validate:"required,uuid"`
-	Amount   int64  `json:"amount_in_piastres" validate:"min=1000"`
+	WalletID uuid.UUID `json:"wallet_id"          validate:"required,uuid"`
+	Amount   int64     `json:"amount_in_piastres" validate:"min=1000"`
 }
 
 type AddToWalletResponse struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
 	Balance   int64     `json:"balance"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type GetWalletResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"user_id"`
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
 	Balance   int64      `json:"balance"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
@@ -43,15 +47,15 @@ type GetWalletResponse struct {
 }
 
 type CreateWalletResponse struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
 	Balance   int64     `json:"balance"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 type TopUpResponse struct {
-	ID                string    `json:"id"`
-	UserID            string    `json:"user_id"`
+	ID                uuid.UUID `json:"id"`
+	UserID            uuid.UUID `json:"user_id"`
 	Status            string    `json:"status"`
 	UpdatedAt         time.Time `json:"updated_at"`
 	ProviderPaymentID string    `json:"provider_payment_id,omitempty"`
@@ -59,8 +63,8 @@ type TopUpResponse struct {
 }
 
 type DeductResponse struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

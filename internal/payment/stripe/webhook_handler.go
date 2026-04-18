@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
+	"github.com/google/uuid"
 	"github.com/stripe/stripe-go/v84"
 	"github.com/stripe/stripe-go/v84/webhook"
 )
@@ -135,8 +136,9 @@ func (h *handler) handleEvent(w http.ResponseWriter, req *http.Request, payload 
 
 	switch eventType {
 	case "payment_intent.succeeded":
+		txUUID, _ := uuid.Parse(transactionID)
 		err := h.service.HandlePaymentSucceeded(req.Context(), HandlePaymentSucceededRequest{
-			TransactionID: transactionID,
+			TransactionID: txUUID,
 		})
 		if err != nil {
 			slog.Error(
@@ -148,8 +150,9 @@ func (h *handler) handleEvent(w http.ResponseWriter, req *http.Request, payload 
 			)
 		}
 	case "payment_intent.payment_failed":
+		txUUID, _ := uuid.Parse(transactionID)
 		err := h.service.HandlePaymentFailed(req.Context(), HandlePaymentFailedRequest{
-			TransactionID: transactionID,
+			TransactionID: txUUID,
 		})
 		if err != nil {
 			slog.Error(
@@ -161,8 +164,9 @@ func (h *handler) handleEvent(w http.ResponseWriter, req *http.Request, payload 
 			)
 		}
 	case "payment_intent.canceled":
+		txUUID, _ := uuid.Parse(transactionID)
 		err := h.service.HandlePaymentCanceled(req.Context(), HandlePaymentCanceledRequest{
-			TransactionID: transactionID,
+			TransactionID: txUUID,
 		})
 		if err != nil {
 			slog.Error(

@@ -1,8 +1,8 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TYPE transaction_type AS ENUM ('debit', 'credit');
-CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed', 'reversing');
-CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed');
+CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed', 'reversing', 'cancelled');
+CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed', 'cancelled');
 
 CREATE TABLE users (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
