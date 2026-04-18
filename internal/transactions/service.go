@@ -7,6 +7,7 @@ import (
 
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
+	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -87,6 +88,16 @@ func (svc *Service) CreateTransaction(
 	req CreateTransactionRequest,
 ) (CreateTransactionResponse, error) {
 	if err := validator.Validate(&req); err != nil {
+		return CreateTransactionResponse{}, err
+	}
+
+	_, err := svc.walletSvc.GetById(ctx, wallet.GetWalletRequest{
+		ID: req.WalletID,
+	})
+	if err != nil {
+		if errors.Is(err, wallet.ErrWalletNotFound) {
+			return CreateTransactionResponse{}, ErrWalletDoesntExist
+		}
 		return CreateTransactionResponse{}, err
 	}
 
