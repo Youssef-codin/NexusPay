@@ -80,13 +80,20 @@ func (svc *Service) CreateTransfer(
 		return CreateTransferResponse{}, ErrBadRequest
 	}
 
-	wallet, err := svc.walletSvc.GetByUserId(ctx)
+	w, err := svc.walletSvc.GetByUserId(ctx)
 	if err != nil {
 		return CreateTransferResponse{}, err
 	}
 
-	if req.ToWalletID == wallet.ID {
+	if req.ToWalletID == w.ID {
 		return CreateTransferResponse{}, ErrSelfTransfer
+	}
+
+	_, err = svc.walletSvc.GetById(ctx, wallet.GetWalletRequest{
+		ID: req.ToWalletID,
+	})
+	if err != nil {
+		return CreateTransferResponse{}, err
 	}
 
 	txCtx, tx, err := svc.txManager.StartTx(ctx)
@@ -98,7 +105,7 @@ func (svc *Service) CreateTransfer(
 	sender, err := svc.transactionSvc.CreateTransaction(
 		txCtx,
 		transactions.CreateTransactionRequest{
-			WalletID: wallet.ID,
+			WalletID: w.ID,
 			Amount:   req.Amount,
 			Type:     repo.TransactionTypeDebit,
 		},
