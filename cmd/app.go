@@ -140,9 +140,13 @@ func (app *application) mount() http.Handler {
 			r.Use(api.NewUserLimiter(10, app.redis))
 			r.Get("/", api.Wrap(TransfersHandler.GetTransfers))
 			r.Post("/", api.Wrap(TransfersHandler.CreateTransfer))
+
+			r.Route("/scheduled", func(r chi.Router) {
+				r.Get("/", api.Wrap(TransfersHandler.GetScheduledTransfers))
+				r.Delete("/{id}", api.Wrap(TransfersHandler.DeleteScheduledTransfer))
+			})
+
 			r.Get("/{id}", api.Wrap(TransfersHandler.GetTransferByID))
-			r.Get("/scheduled", api.Wrap(TransfersHandler.GetScheduledTransfers))
-			r.Delete("/scheduled/{id}", api.Wrap(TransfersHandler.DeleteScheduledTransfer))
 		})
 	})
 

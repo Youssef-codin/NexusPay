@@ -8,6 +8,7 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
 	"github.com/Youssef-codin/NexusPay/internal/wallet"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -68,6 +69,13 @@ func (h *handler) CreateTransfer(w http.ResponseWriter, req *http.Request) error
 func (h *handler) GetTransferByID(w http.ResponseWriter, req *http.Request) error {
 	var dto GetTransferByIDRequest
 
+	idStr := chi.URLParam(req, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return api.WrappedError(http.StatusBadRequest, "invalid id")
+	}
+	dto.ID = id
+
 	if err := api.Read(req, &dto); err != nil {
 		return err
 	}
@@ -109,6 +117,13 @@ func (h *handler) GetScheduledTransfers(w http.ResponseWriter, req *http.Request
 
 func (h *handler) DeleteScheduledTransfer(w http.ResponseWriter, req *http.Request) error {
 	var dto CancelScheduledTransfersRequest
+
+	idStr := chi.URLParam(req, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return api.WrappedError(http.StatusBadRequest, "invalid id")
+	}
+	dto.TransferID = id
 
 	if err := api.Read(req, &dto); err != nil {
 		return err

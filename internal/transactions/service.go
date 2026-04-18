@@ -18,7 +18,6 @@ var (
 	ErrInsufficientFunds       = errors.New("insufficient funds")
 	ErrAlreadySameStatus       = errors.New("transaction is already in the same state")
 	ErrInvalidStatusTransition = errors.New("invalid state change")
-	ErrWalletDoesntExist       = errors.New("user with such wallet id doesn't exist")
 )
 
 type IService interface {
