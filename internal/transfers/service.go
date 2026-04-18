@@ -440,6 +440,9 @@ func (svc *Service) CancelScheduledTransfers(
 		Bytes: st.TransferID.Bytes,
 		Valid: true,
 	})
+	if err != nil {
+		return CancelScheduledTransfersResponse{}, err
+	}
 
 	w, err := svc.walletSvc.GetByUserId(txCtx)
 	if err != nil {
@@ -450,7 +453,6 @@ func (svc *Service) CancelScheduledTransfers(
 		return CancelScheduledTransfersResponse{}, ErrWrongOwnership
 	}
 
-	//TODO: make sure to test this. this is optional so if it wasnt executed yet it should be Valid = false
 	if st.ExecutedAt.Valid {
 		return CancelScheduledTransfersResponse{}, ErrAlreadyExecuted
 	}
