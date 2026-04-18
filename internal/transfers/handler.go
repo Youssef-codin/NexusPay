@@ -6,6 +6,7 @@ import (
 
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
+	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
 	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/google/uuid"
 )
@@ -53,6 +54,8 @@ func (h *handler) CreateTransfer(w http.ResponseWriter, req *http.Request) error
 			return api.WrappedError(http.StatusBadRequest, "Can not transfer to self")
 		case errors.Is(err, ErrBadRequest):
 			return api.WrappedError(http.StatusBadRequest, "Bad transfer request")
+		case errors.Is(err, validator.ErrScheduledAtMustBeFuture):
+			return api.WrappedError(http.StatusBadRequest, "Scheduled time must be in the future")
 		default:
 			return err
 		}

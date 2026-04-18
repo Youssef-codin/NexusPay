@@ -11,7 +11,7 @@ type CreateTransferRequest struct {
 	ToWalletID  uuid.UUID  `json:"to_wallet_id"`
 	Amount      int64      `json:"amount_in_piastres" validate:"min=1000"`
 	Note        string     `json:"note"`
-	ScheduledAt *time.Time `json:"scheduled_at"`
+	ScheduledAt *time.Time `json:"scheduled_at" validate:"omitempty,future"`
 }
 
 type GetTransferByIDRequest struct {

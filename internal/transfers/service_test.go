@@ -445,6 +445,7 @@ func TestCreateTransfer_StartTransactionFails(t *testing.T) {
 		UserID:  userID,
 		Balance: 5000,
 	}, nil)
+	mockWalletSvc.On("GetById", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{}, nil)
 	mockTxManager.On("StartTx", mock.Anything).Return(ctx, nil, errors.New("failed to start tx"))
 
 	svc := &Service{
@@ -481,6 +482,7 @@ func TestCreateTransfer_CreateDebitTransactionFails(t *testing.T) {
 		UserID:  userID,
 		Balance: 5000,
 	}, nil)
+	mockWalletSvc.On("GetById", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{}, nil)
 	mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 	mockTxSvc.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{}, errors.New("db error"))
 
@@ -520,6 +522,10 @@ func TestCreateTransfer_CreateCreditTransactionFails(t *testing.T) {
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
+	}, nil)
+	mockWalletSvc.On("GetById", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
+		ID:     receiverWalletID,
+		UserID: uuid.New(),
 	}, nil)
 	mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 	mockTxSvc.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{
@@ -566,6 +572,12 @@ func TestCreateTransfer_ExecuteTransfer_SenderWalletNotFound(t *testing.T) {
 		UserID:  userID,
 		Balance: 5000,
 	}, nil)
+	mockWalletSvc.On("GetById", mock.Anything, wallet.GetWalletRequest{ID: senderWalletID}).
+		Return(wallet.GetWalletResponse{}, wallet.ErrWalletNotFound)
+	mockWalletSvc.On("GetById", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
+		ID:     receiverWalletID,
+		UserID: uuid.New(),
+	}, nil)
 	mockTxManager.On("StartTx", mock.Anything).Return(ctx, mockTx, nil)
 
 	mockTxSvc.On("CreateTransaction", mock.Anything, mock.Anything).Return(transactions.CreateTransactionResponse{
@@ -589,8 +601,7 @@ func TestCreateTransfer_ExecuteTransfer_SenderWalletNotFound(t *testing.T) {
 		UpdatedAt:           pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	}, nil)
 
-	mockWalletSvc.On("GetById", mock.Anything, wallet.GetWalletRequest{ID: senderWalletID}).
-		Return(wallet.GetWalletResponse{}, wallet.ErrWalletNotFound)
+	mockWalletSvc.On("DeductFromBalance", mock.Anything, mock.Anything).Return(wallet.DeductResponse{}, wallet.ErrInsufficientFunds).Maybe()
 
 	mockTxSvc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockTransfersRepo.On("UpdateTransferStatus", mock.Anything, mock.Anything).Return(repo.Transfer{

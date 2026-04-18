@@ -2,6 +2,7 @@ package validator
 
 import (
 	"errors"
+	"time"
 
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/go-playground/validator/v10"
@@ -10,12 +11,11 @@ import (
 var validate = validator.New()
 
 var (
-	ErrAmountIsTooLow = errors.New(
-		"amount is too low, must be at least 10 EGP (1000 piastres)",
-	)
+	ErrAmountIsTooLow       = errors.New("amount is too low, must be at least 10 EGP (1000 piastres)")
 	ErrInvalidTransactionStatus = errors.New("invalid transaction status")
 	ErrInvalidTransactionType   = errors.New("invalid transaction type")
 	ErrInvalidTransferStatus    = errors.New("invalid transfer status")
+	ErrScheduledAtMustBeFuture  = errors.New("scheduled_at must be in the future")
 )
 
 func init() {
@@ -51,6 +51,14 @@ func init() {
 		}
 		return false
 	})
+
+	validate.RegisterValidation("future", func(fl validator.FieldLevel) bool {
+		t, ok := fl.Field().Interface().(time.Time)
+		if !ok {
+			return false
+		}
+		return t.After(time.Now())
+	})
 }
 
 func Validate(s any) error {
@@ -67,6 +75,8 @@ func Validate(s any) error {
 				return ErrInvalidTransactionType
 			case "transfer_status":
 				return ErrInvalidTransferStatus
+			case "future":
+				return ErrScheduledAtMustBeFuture
 			}
 		}
 		return err
