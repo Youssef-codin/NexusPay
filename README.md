@@ -67,6 +67,9 @@ Copy `.env.example` to `.env` and fill in the values:
 | -------- | ----------- |
 | `DB_URL` | PostgreSQL connection string |
 | `REDIS_URL` | Redis connection string |
+| `GOOSE_DBSTRING` | PostgreSQL connection string for migrations |
+| `GOOSE_DRIVER` | Database driver for migrations |
+| `GOOSE_MIGRATION_DIR` | Path to migration files |
 | `JWT_SECRET` | Secret key for signing JWT tokens |
 | `STRIPE_SECRET_KEY` | Stripe API key |
 
