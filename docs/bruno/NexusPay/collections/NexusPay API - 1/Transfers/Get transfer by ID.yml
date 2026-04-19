@@ -8,6 +8,10 @@ info:
 http:
   method: GET
   url: "{{baseUrl}}/transfers/:id"
+  params:
+    - name: id
+      value: ""
+      type: path
   auth:
     type: bearer
     token: "{{token}}"

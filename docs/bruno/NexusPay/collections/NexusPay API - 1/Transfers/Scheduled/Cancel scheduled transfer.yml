@@ -8,6 +8,10 @@ info:
 http:
   method: DELETE
   url: "{{baseUrl}}/transfers/scheduled/:id"
+  params:
+    - name: id
+      value: ""
+      type: path
   auth:
     type: bearer
     token: "{{token}}"
