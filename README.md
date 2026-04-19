@@ -1,331 +1,185 @@
-# NexusPay — Project Spec
+# NexusPay
 
-## Overview
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?style=flat&logo=postgresql)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7+-DC382D?style=flat&logo=redis)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-24+-2496ED?style=flat&logo=docker)](https://www.docker.com/)
 
-A digital wallet API built in Go, inspired by Telda. Supports user authentication,
-Stripe-powered top-ups, user-to-user transfers, transaction history, and scheduled
-transfers. EGP only (stored in piastres).
+A production-ready digital wallet API built in Go, inspired by platforms like Telda.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+- [Scripts](#scripts)
+- [Testing](#testing)
+- [Engineering Highlights](#engineering-highlights)
+- [Architecture](#architecture)
+- [API Documentation](#api-documentation)
+- [Tech Stack](#tech-stack)
+
+---
+
+## Features
+
+- **User authentication** — Secure JWT-based auth with refresh tokens
+- **Wallet management** — Every user gets a wallet with balance tracked in piastres (1 EGP = 100 piastres)
+- **Stripe top-ups** — Add money via Stripe Payment Intents with webhook-driven fulfillment
+- **P2P transfers** — Send money to other users with full transaction history
+- **Scheduled transfers** — Set up future transfers via a goroutine-powered scheduler that runs every minute
+- **Rate limiting** — Per-user and per-IP rate limiting on sensitive endpoints
+- **Redis caching** — Wallet balances and user profiles cached with smart invalidation
+
+---
+
+## Prerequisites
+
+- **Docker** — Required to run PostgreSQL and Redis
+- **Go** (1.22+) — If running without Docker
+- **just** — Optional, for running the scripts below
+- **Stripe CLI** — Optional, for testing webhook integration
+
+---
+
+## Getting Started
+
+```bash
+# Clone and start dependencies
+just up
+just migrate-up
+
+# Run the server
+just run
+```
+
+API runs on `http://localhost:3000`
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in the values:
+
+| Variable | Description |
+| -------- | ----------- |
+| `DB_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string |
+| `JWT_SECRET` | Secret key for signing JWT tokens |
+| `STRIPE_SECRET_KEY` | Stripe API key |
+
+---
+
+## Scripts
+
+| Command | Description |
+| ------- | ----------- |
+| `just run` | Start the development server with hot reload |
+| `just build` | Build the Go binary to `bin/` |
+| `just test` | Run all tests |
+| `just test-unit` | Run unit tests only |
+| `just test-integration` | Run integration tests (requires Stripe CLI) |
+| `just coverage` | Generate test coverage report |
+| `just up` | Start PostgreSQL and Redis containers |
+| `just down` | Stop containers |
+| `just migrate-up` | Run database migrations |
+| `just migrate-create <name>` | Create a new migration |
+| `just sqlc-gen` | Generate type-safe SQL queries |
+| `just lint` | Run linter |
+| `just fmt` | Format code |
+
+---
+
+## Testing
+
+Run unit tests for fast feedback:
+
+```bash
+just test-unit
+```
+
+Run full integration tests (requires Stripe CLI running with webhook forwarding):
+
+```bash
+stripe listen --forward-to localhost:3000/webhook/stripe
+just test-integration
+```
+
+Generate coverage report:
+
+```bash
+just coverage
+```
+
+---
+
+## Engineering Highlights
+
+- **Goroutine-powered scheduler** — Scheduled transfers execute asynchronously using Go's concurrency model. A cron job polls the database every minute and dispatches transfers using goroutines for parallel execution
+- **Double-entry bookkeeping** — Every transfer creates paired debit and credit transactions, ensuring full auditability and data consistency
+- **Redis caching** — Wallet balances and user profiles cached in Redis with automatic invalidation on writes to keep data fresh
+- **Rate limiting** — Per-user rate limiting on transfers (10 req/min) and top-ups (5 req/min), plus per-IP limiting on login to prevent abuse
+- **Crash-recovery guards** — Scheduled transfers use `SELECT ... FOR UPDATE SKIP LOCKED` to prevent duplicate execution across multiple instances, with a `processing` status that catches stale jobs for retry
+- **Soft deletes** — All major entities use soft deletes to preserve historical data
+- **Stripe webhook security** — All webhook events validated using Stripe's signature verification
+- **Idiomatic Go** — Clean layered architecture with handlers → services → repositories, generated type-safe SQL with sqlc, and structured logging with slog
+
+---
+
+## Architecture
+
+```
+Nexus/
+├── cmd/                    # Application entrypoints
+├── internal/
+│   ├── auth/            # JWT authentication
+│   ├── db/
+│   │   ├── postgresql/  # PostgreSQL + sqlc
+│   │   └── redisDb/    # Redis caching
+│   ├── payment/        # Stripe integration
+│   ├── security/      # Password hashing, JWT
+│   ├── transactions/  # Transaction logic
+│   ├── transfers/     # P2P + scheduled transfers
+│   ├── users/         # User management
+│   ├── utils/         # Helpers, validation
+│   └── wallet/        # Wallet management
+└── docs/
+    └── bruno/         # API documentation
+```
+
+---
+
+## API Documentation
+
+The API is fully documented using:
+
+- **Swagger UI** — Open `docs/NexusPay API-documentation.html` in a browser
+- **Bruno** — Import the collection from `docs/bruno/NexusPay/`
+
+Endpoints include:
+- **Auth** — Register, login, refresh token, profile update
+- **Wallet** — Get balance, initiate top-up, Stripe webhook
+- **Transfers** — Create transfer, get history, get single transfer
+- **Scheduled** — Create, list, update, cancel scheduled transfers
+- **Users** — Search users by name or email
 
 ---
 
 ## Tech Stack
 
-| Layer            | Choice     |
-| ---------------- | ---------- |
-| Language         | Go         |
-| Router           | Chi        |
-| Database         | PostgreSQL |
-| Cache            | Redis      |
-| Migrations       | Goose      |
-| Query Generation | sqlc       |
-| Payments         | Stripe     |
-| Docs             | Swaggo     |
-
-## Libraries
-
-- `go-chi/chi` — router
-- `go-chi/httprate` — rate limiting
-- `golang-jwt/jwt` — auth
-- `sqlc-dev/sqlc` — query generation
-- `pressly/goose` — migrations
-- `swaggo/swag` — swagger
-- `redis/go-redis` — Redis client
-- `joho/godotenv` — config
-- `go-playground/validator` — request validation
-- `stripe/stripe-go` — Stripe SDK
-
-## Project Structure
-
-```
-Nexus/
-├── cmd/                    # Application entrypoints
-│   ├── main.go            # Main entrypoint
-│   └── app.go             # App initialization & routing
-├── internal/              # Private application code
-│   ├── db/
-│   │   ├── postgresql/    # PostgreSQL related
-│   │   │   ├── migrations/   # DB migrations (Goose)
-│   │   │   └── sqlc/      # Generated SQL queries
-│   │   │       └── queries/  # SQL query files
-│   │   └── redisDb/       # Redis caching layer
-│   ├── security/          # Auth, JWT, password hashing
-│   ├── users/             # User handlers, services, types
-│   └── utils/             # Utilities
-│       ├── api/           # API helpers
-│       └── env/           # Environment config
-├── docs/                  # Swagger documentation
-├── compose.yaml           # Docker Compose config
-├── Dockerfile             # Container image
-├── go.mod / go.sum        # Dependencies
-├── sqlc.yaml              # sqlc config
-├── justfile               # Task runner
-└── .air.toml              # Hot reload config
-```
+| Layer | Technology |
+| ----- | ---------- |
+| Language | Go |
+| Router | Chi |
+| Database | PostgreSQL |
+| Cache & Rate Limiting | Redis |
+| Query Generation | sqlc |
+| Migrations | Goose |
+| Authentication | JWT |
+| Payments | Stripe |
+| Testing | Go test |
+| HTTP Client | net/http |
 
 ---
-
-## Database Schema
-
-```sql
-CREATE TYPE transaction_type AS ENUM ('debit', 'credit');
-CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed');
-CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed');
-
-CREATE TABLE users (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email               TEXT NOT NULL UNIQUE,
-    password            TEXT NOT NULL,
-    full_name           TEXT NOT NULL,
-    refresh_token       TEXT,
-    token_expires_at    TIMESTAMPTZ,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at          TIMESTAMPTZ
-);
-
-CREATE TABLE wallets (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL UNIQUE REFERENCES users(id),
-    balance     BIGINT NOT NULL DEFAULT 0 CHECK (balance >= 0),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at  TIMESTAMPTZ
-);
-
-CREATE TABLE transactions (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    wallet_id       UUID NOT NULL REFERENCES wallets(id),
-    amount          BIGINT NOT NULL CHECK (amount > 0),
-    type            transaction_type NOT NULL,
-    status          transaction_status NOT NULL DEFAULT 'pending',
-    transfer_id     UUID REFERENCES transfers(id) DEFERRABLE INITIALLY DEFERRED,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at      TIMESTAMPTZ
-);
-
-CREATE TABLE transfers (
-    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    from_wallet_id          UUID NOT NULL REFERENCES wallets(id),
-    to_wallet_id            UUID NOT NULL REFERENCES wallets(id),
-    amount                  BIGINT NOT NULL CHECK (amount > 0),
-    status                  transfer_status NOT NULL DEFAULT 'pending',
-    note                    TEXT,
-    debit_transaction_id    UUID UNIQUE REFERENCES transactions(id) DEFERRABLE INITIALLY DEFERRED,
-    credit_transaction_id   UUID UNIQUE REFERENCES transactions(id) DEFERRABLE INITIALLY DEFERRED,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at              TIMESTAMPTZ
-);
-
-CREATE TABLE scheduled_transfers (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transfer_id UUID NOT NULL UNIQUE REFERENCES transfers(id),
-    scheduled_at TIMESTAMPTZ NOT NULL,
-    executed_at  TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-NEW.updated_at = NOW();
-RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER users_set_updated_at
-BEFORE UPDATE ON users
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TRIGGER wallets_set_updated_at
-BEFORE UPDATE ON wallets
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TRIGGER transfers_set_updated_at
-BEFORE UPDATE ON transfers
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TRIGGER scheduled_transfers_set_updated_at
-BEFORE UPDATE ON scheduled_transfers
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-```
-
----
-
-## Endpoints
-
-### Auth
-
-| Method | Endpoint         | Auth | Description                  |
-| ------ | ---------------- | ---- | ---------------------------- |
-| POST   | `/auth/register` | ❌   | Register a new user          |
-| POST   | `/auth/login`    | ❌   | Login and get JWT            |
-| POST   | `/auth/refresh`  | ❌   | Refresh JWT token            |
-| PATCH  | `/auth/profile`  | ✅   | Update name, email, password |
-
-### Wallet
-
-| Method | Endpoint          | Auth | Description            |
-| ------ | ----------------- | ---- | ---------------------- |
-| GET    | `/wallet`         | ✅   | Get wallet + balance   |
-| POST   | `/wallet/topup`   | ✅   | Initiate Stripe top-up |
-| POST   | `/webhook/stripe` | ❌   | Stripe webhook handler |
-
-### Transfers
-
-| Method | Endpoint         | Auth | Description                   |
-| ------ | ---------------- | ---- | ----------------------------- |
-| POST   | `/transfers`     | ✅   | Send money to another user    |
-| GET    | `/transfers`     | ✅   | Get sent and received history |
-| GET    | `/transfers/:id` | ✅   | Get single transfer           |
-
-### Scheduled Transfers
-
-| Method | Endpoint         | Auth | Description                         |
-| ------ | ---------------- | ---- | ----------------------------------- |
-| POST   | `/scheduled`     | ✅   | Create a scheduled transfer         |
-| GET    | `/scheduled`     | ✅   | List scheduled transfers            |
-| GET    | `/scheduled/:id` | ✅   | Get single scheduled transfer       |
-| PATCH  | `/scheduled/:id` | ✅   | Update a pending scheduled transfer |
-| DELETE | `/scheduled/:id` | ✅   | Cancel a scheduled transfer         |
-
-### Users
-
-| Method | Endpoint           | Auth | Description                   |
-| ------ | ------------------ | ---- | ----------------------------- |
-| GET    | `/users/search?q=` | ✅   | Search users by name or email |
-
----
-
-## Redis
-
-### Caching
-
-| Key                          | Description            | Invalidated On    |
-| ---------------------------- | ---------------------- | ----------------- |
-| `wallet:balance:{wallet_id}` | User's current balance | Every transaction |
-| `user:{user_id}`             | User profile           | Profile update    |
-
-### Rate Limiting
-
-| Endpoint        | Limit      | Per  |
-| --------------- | ---------- | ---- |
-| `/transfers`    | 10 req/min | User |
-| `/wallet/topup` | 5 req/min  | User |
-| `/auth/login`   | 5 req/min  | IP   |
-| Everything else | 60 req/min | User |
-
----
-
-## Transaction Types
-
-- `debit` — money sent out
-- `credit` — money received or topped up
-
-## Transaction Statuses
-
-- `pending` — initiated
-- `processing` — being handled
-- `completed` — successful
-- `failed` — something went wrong
-- `reversed` — rolled back
-
-## Transfer Statuses
-
-- `pending` — initiated
-- `completed` — successful
-- `failed` — something went wrong
-
-## Scheduled Transfer Statuses
-
-- `pending` — waiting for execution
-- `processing` — cron picked it up
-- `completed` — executed successfully
-- `failed` — cron tried but failed
-- `cancelled` — user cancelled
-
----
-
-## Stripe Top-Up Flow
-
-1. Client calls `POST /wallet/topup`
-2. Server creates a Stripe Payment Intent
-3. Transaction created with status `pending`
-4. Stripe processes payment
-5. Stripe fires webhook to `POST /webhook/stripe`
-6. Server updates transaction to `completed` or `failed`
-7. On `completed`, wallet balance is incremented
-
----
-
-## Transfer Flow
-
-1. Client calls `POST /transfers`
-2. Server creates a `transfers` row with status `pending`, nullable transaction IDs
-3. Server inserts debit transaction (`pending`) and credit transaction (`pending`)
-4. Server updates the transfer with both transaction IDs
-5. Execute balance changes within a DB transaction:
-   - Debit sender's wallet
-   - Credit receiver's wallet
-   - Mark both transactions as `completed`
-   - Mark transfer as `completed`
-6. On any failure, mark transactions and transfer as `failed`
-
----
-
-## Cron Job — Scheduled Transfers
-
-Runs every minute:
-
-1. Query `scheduled_transfers` where `status = pending` AND `scheduled_at <= NOW()`
-2. Set status to `processing`
-3. Execute transfer logic (same as regular transfer)
-4. Set status to `completed` or `failed`
-
-> Note: `processing` status acts as a crash recovery guard.
-> Stuck `processing` records can be detected and retried or flagged.
-
----
-
-## Notes
-
-- All money is stored in **piastres** (1 EGP = 100 piastres) as BIGINT
-- JWT auth will be replaced by shared auth service in Project 2
-- Soft deletes used on `users`, `transactions`, `transfers`, `scheduled_transfers`
-- Double-entry bookkeeping: every transfer creates two transaction records
-- Webhook signature must be verified using `stripe.ConstructEvent`
-- `/users/search` requires a minimum query length of 3 characters and returns only non-sensitive fields (id, full_name, email)
-- Use `SELECT ... FOR UPDATE SKIP LOCKED` in the cron job to prevent concurrent duplicate execution across multiple instances
-
----
-
-## Running Integration Tests
-
-Integration tests require external services (PostgreSQL, Redis) and Stripe CLI for webhook forwarding.
-
-### Prerequisites
-
-1. **Stripe CLI** must be installed and authenticated:
-   ```bash
-   stripe login
-   ```
-
-2. **Docker** must be running (for testcontainers)
-
-### Run Integration Tests
-
-```bash
-go test -tags integration -v ./tests/integration/...
-```
-
-The tests will automatically start PostgreSQL and Redis containers, run migrations, and set up the test app.
-
-### Stripe Webhook Forwarding
-
-For tests that involve Stripe (top-ups, webhooks), Stripe CLI must forward webhooks:
-
-```bash
-stripe listen --forward-to localhost:3002/webhook/stripe
-```
-
-> Note: Integration tests will fail if Stripe CLI is not running and forwarding webhooks to the test server.

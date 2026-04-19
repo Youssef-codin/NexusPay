@@ -1,0 +1,66 @@
+info:
+  name: Get transfers
+  type: http
+  seq: 1
+  tags:
+    - Transfers
+
+http:
+  method: GET
+  url: "{{baseUrl}}/transfers/"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 200 Response
+    description: Transfers retrieved successfully
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "from_wallet_id": "123e4567-e89b-12d3-a456-426614174000",
+            "transfers": [
+              {
+                "id": "123e4567-e89b-12d3-a456-426614174001",
+                "amount_in_piastres": 5000,
+                "status": "completed",
+                "note": "Dinner split",
+                "created_at": "2024-01-15T10:30:00Z"
+              }
+            ]
+          }
+  - name: 401 Response
+    description: Unauthorized - missing or invalid token
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: GET
+    response:
+      status: 401
+      statusText: Unauthorized
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "unauthorized",
+            "message": "Missing or invalid authorization token",
+            "status_code": 401
+          }
