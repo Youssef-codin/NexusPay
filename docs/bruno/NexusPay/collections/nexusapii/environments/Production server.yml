@@ -1,4 +1,0 @@
-name: Production server
-variables:
-  - name: baseUrl
-    value: api.nexuspay.com

@@ -46,6 +46,7 @@ type UserMini struct {
 type TransferResponse struct {
 	ID           uuid.UUID           `json:"id"`
 	FromWalletID uuid.UUID           `json:"from_wallet_id"`
+	FromUser     UserMini            `json:"from_user"`
 	ToWalletID   uuid.UUID           `json:"to_wallet_id"`
 	ToUser       UserMini            `json:"to_user"`
 	Amount       int64               `json:"amount_in_piastres"`

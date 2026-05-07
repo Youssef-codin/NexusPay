@@ -40,10 +40,13 @@ SELECT
   t.id, t.from_wallet_id, t.to_wallet_id, t.amount, t.status, t.note,
   t.created_at, t.updated_at, t.deleted_at,
   t.debit_transaction_id, t.credit_transaction_id,
-  u.id as to_user_id, u.full_name as to_user_full_name
+  fu.id as from_user_id, fu.full_name as from_user_full_name,
+  tu.id as to_user_id, tu.full_name as to_user_full_name
 FROM transfers t
-LEFT JOIN wallets w ON t.to_wallet_id = w.id
-LEFT JOIN users u ON w.user_id = u.id
+LEFT JOIN wallets fw ON t.from_wallet_id = fw.id
+LEFT JOIN users fu ON fw.user_id = fu.id
+LEFT JOIN wallets tw ON t.to_wallet_id = tw.id
+LEFT JOIN users tu ON tw.user_id = tu.id
 WHERE t.id = $1;
 
 -- name: GetTransfersByWalletId :many
@@ -57,9 +60,12 @@ SELECT
   t.id, t.from_wallet_id, t.to_wallet_id, t.amount, t.status, t.note,
   t.created_at, t.updated_at, t.deleted_at,
   t.debit_transaction_id, t.credit_transaction_id,
-  u.id as to_user_id, u.full_name as to_user_full_name
+  fu.id as from_user_id, fu.full_name as from_user_full_name,
+  tu.id as to_user_id, tu.full_name as to_user_full_name
 FROM transfers t
-LEFT JOIN wallets w ON t.to_wallet_id = w.id
-LEFT JOIN users u ON w.user_id = u.id
+LEFT JOIN wallets fw ON t.from_wallet_id = fw.id
+LEFT JOIN users fu ON fw.user_id = fu.id
+LEFT JOIN wallets tw ON t.to_wallet_id = tw.id
+LEFT JOIN users tu ON tw.user_id = tu.id
 WHERE t.to_wallet_id = $1
    OR t.from_wallet_id = $1;

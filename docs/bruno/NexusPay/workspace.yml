@@ -4,8 +4,6 @@ info:
   type: workspace
 
 collections:
-  - name: "nexusapii"
-    path: "collections/nexusapii"
   - name: "NexusPay API"
     path: "collections/NexusPay API - 1"
 

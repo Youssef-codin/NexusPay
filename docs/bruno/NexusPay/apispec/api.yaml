@@ -476,6 +476,13 @@ paths:
                           type: string
                         from_wallet_id:
                           type: string
+                        from_user:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            full_name:
+                              type: string
                         to_wallet_id:
                           type: string
                         to_user:
@@ -501,6 +508,9 @@ paths:
                     transfers:
                       - id: 123e4567-e89b-12d3-a456-426614174001
                         from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
+                        from_user:
+                          id: 123e4567-e89b-12d3-a456-426614174000
+                          full_name: Alice Smith
                         to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
                         to_user:
                           id: 123e4567-e89b-12d3-a456-426614174003
@@ -512,6 +522,9 @@ paths:
                         created_at: '2024-01-15T10:30:00Z'
                       - id: 123e4567-e89b-12d3-a456-426614174004
                         from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
+                        from_user:
+                          id: 123e4567-e89b-12d3-a456-426614174000
+                          full_name: Alice Smith
                         to_wallet_id: 123e4567-e89b-12d3-a456-426614174005
                         to_user:
                           id: 123e4567-e89b-12d3-a456-426614174006
@@ -528,6 +541,9 @@ paths:
                     transfers:
                       - id: 123e4567-e89b-12d3-a456-426614174001
                         from_wallet_id: 023e4567-e89b-12d3-a456-426614174000
+                        from_user:
+                          id: 023e4567-e89b-12d3-a456-426614174000
+                          full_name: Alice Smith
                         to_wallet_id: 223e4567-e89b-12d3-a456-426614174002
                         to_user:
                           id: 323e4567-e89b-12d3-a456-426614174003
@@ -539,6 +555,9 @@ paths:
                         created_at: '2024-01-15T10:30:00Z'
                       - id: 423e4567-e89b-12d3-a456-426614174004
                         from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
+                        from_user:
+                          id: 123e4567-e89b-12d3-a456-426614174000
+                          full_name: Alice Smith
                         to_wallet_id: 523e4567-e89b-12d3-a456-426614174005
                         to_user:
                           id: 623e4567-e89b-12d3-a456-426614174006
@@ -591,6 +610,13 @@ paths:
                         type: string
                       from_wallet_id:
                         type: string
+                      from_user:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          full_name:
+                            type: string
                       to_wallet_id:
                         type: string
                       to_user:
@@ -616,6 +642,9 @@ paths:
                     transfer:
                       id: 123e4567-e89b-12d3-a456-426614174001
                       from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
+                      from_user:
+                        id: 123e4567-e89b-12d3-a456-426614174000
+                        full_name: Alice Smith
                       to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
                       to_user:
                         id: 123e4567-e89b-12d3-a456-426614174003
@@ -632,6 +661,9 @@ paths:
                     transfer:
                       id: 123e4567-e89b-12d3-a456-426614174001
                       from_wallet_id: 023e4567-e89b-12d3-a456-426614174000
+                      from_user:
+                        id: 023e4567-e89b-12d3-a456-426614174000
+                        full_name: Alice Smith
                       to_wallet_id: 223e4567-e89b-12d3-a456-426614174002
                       to_user:
                         id: 323e4567-e89b-12d3-a456-426614174003

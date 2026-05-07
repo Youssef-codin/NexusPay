@@ -361,6 +361,14 @@ func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDRespo
 			direction = "debit"
 		}
 
+		fromUser := UserMini{}
+		if t.FromUserID.Bytes != uuid.Nil {
+			fromUser = UserMini{
+				ID:       uuid.UUID(t.FromUserID.Bytes),
+				FullName: t.FromUserFullName.String,
+			}
+		}
+
 		toUser := UserMini{}
 		if t.ToUserID.Bytes != uuid.Nil {
 			toUser = UserMini{
@@ -372,6 +380,7 @@ func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDRespo
 		dtoTransfers = append(dtoTransfers, TransferResponse{
 			ID:           uuid.UUID(t.ID.Bytes),
 			FromWalletID: uuid.UUID(t.FromWalletID.Bytes),
+			FromUser:     fromUser,
 			ToWalletID:   uuid.UUID(t.ToWalletID.Bytes),
 			ToUser:       toUser,
 			Amount:       t.Amount,
@@ -415,6 +424,14 @@ func (svc *Service) GetTransferByID(
 		direction = "debit"
 	}
 
+	fromUser := UserMini{}
+	if transfer.FromUserID.Bytes != uuid.Nil {
+		fromUser = UserMini{
+			ID:       uuid.UUID(transfer.FromUserID.Bytes),
+			FullName: transfer.FromUserFullName.String,
+		}
+	}
+
 	toUser := UserMini{}
 	if transfer.ToUserID.Bytes != uuid.Nil {
 		toUser = UserMini{
@@ -427,6 +444,7 @@ func (svc *Service) GetTransferByID(
 		Transfer: TransferResponse{
 			ID:           uuid.UUID(transfer.ID.Bytes),
 			FromWalletID: uuid.UUID(transfer.FromWalletID.Bytes),
+			FromUser:     fromUser,
 			ToWalletID:   uuid.UUID(transfer.ToWalletID.Bytes),
 			ToUser:       toUser,
 			Amount:       transfer.Amount,
