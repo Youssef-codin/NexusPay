@@ -11,7 +11,7 @@ type CreateTransferRequest struct {
 	ToWalletID  uuid.UUID  `json:"to_wallet_id"`
 	Amount      int64      `json:"amount_in_piastres" validate:"min=1000"`
 	Note        string     `json:"note"`
-	ScheduledAt *time.Time `json:"scheduled_at" validate:"omitempty,future"`
+	ScheduledAt *time.Time `json:"scheduled_at"       validate:"omitempty,future"`
 }
 
 type GetTransferByIDRequest struct {
@@ -38,17 +38,25 @@ type CreateTransferResponse struct {
 	CreatedAt    time.Time           `json:"created_at"`
 }
 
+type UserMini struct {
+	ID       uuid.UUID `json:"id"`
+	FullName string    `json:"full_name"`
+}
+
 type TransferResponse struct {
-	ID        uuid.UUID           `json:"id"`
-	Amount    int64               `json:"amount_in_piastres"`
-	Status    repo.TransferStatus `json:"status"`
-	Note      string              `json:"note"`
-	CreatedAt time.Time           `json:"created_at"`
+	ID           uuid.UUID           `json:"id"`
+	FromWalletID uuid.UUID           `json:"from_wallet_id"`
+	ToWalletID   uuid.UUID           `json:"to_wallet_id"`
+	ToUser       UserMini            `json:"to_user"`
+	Amount       int64               `json:"amount_in_piastres"`
+	Direction    string              `json:"direction"`
+	Status       repo.TransferStatus `json:"status"`
+	Note         string              `json:"note"`
+	CreatedAt    time.Time           `json:"created_at"`
 }
 
 type GetTransfersByIDResponse struct {
-	FromWalletID uuid.UUID          `json:"from_wallet_id"`
-	Transfers    []TransferResponse `json:"transfers"`
+	Transfers []TransferResponse `json:"transfers"`
 }
 
 type ProcessTransferRequest struct {
@@ -63,6 +71,10 @@ type ProcessTransferResponse struct {
 	Status       repo.TransferStatus `json:"status"`
 	Note         string              `json:"note"`
 	CreatedAt    time.Time           `json:"created_at"`
+}
+
+type GetTransfersResponse struct {
+	Transfer TransferResponse `json:"transfer"`
 }
 
 type GetTransferByIDResponse struct {

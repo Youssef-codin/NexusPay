@@ -63,3 +63,39 @@ examples:
             "message": "Missing or invalid authorization token",
             "status_code": 401
           }
+  - name: example
+    request:
+      url: "{{baseUrl}}/transfers/scheduled/"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: content-type
+          value: application/json
+        - name: vary
+          value: Origin
+        - name: x-ratelimit-limit
+          value: "15"
+        - name: x-ratelimit-remaining
+          value: "13"
+        - name: x-ratelimit-reset
+          value: "1778113020"
+        - name: date
+          value: Thu, 07 May 2026 00:16:50 GMT
+        - name: content-length
+          value: "180"
+      body:
+        type: json
+        data: |-
+          {
+            "scheduled_transfers": [
+              {
+                "id": "123e4567-e89b-12d3-a456-426614174001",
+                "transfer_id": "223e4567-e89b-12d3-a456-426614174002",
+                "scheduled_at": "2024-01-20T10:00:00Z",
+                "executed_at": null,
+                "created_at": "2024-01-15T10:30:00Z"
+              }
+            ]
+          }

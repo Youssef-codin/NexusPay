@@ -1,0 +1,283 @@
+info:
+  name: Create transfer
+  type: http
+  seq: 1
+  tags:
+    - Transfers
+
+http:
+  method: POST
+  url: "{{baseUrl}}/transfers/"
+  body:
+    type: json
+    data: |-
+      {
+        "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+        "amount_in_piastres": 5000,
+        "note": "Dinner split"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 200 Response
+    description: Transfer created successfully
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "123e4567-e89b-12d3-a456-426614174001",
+            "from_wallet_id": "123e4567-e89b-12d3-a456-426614174000",
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "status": "completed",
+            "note": "Dinner split",
+            "created_at": "2024-01-15T10:30:00Z"
+          }
+  - name: 200 Response (Scheduled)
+    description: Scheduled transfer created successfully
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "123e4567-e89b-12d3-a456-426614174001",
+            "from_wallet_id": "123e4567-e89b-12d3-a456-426614174000",
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "status": "pending",
+            "note": "Rent payment",
+            "created_at": "2024-01-15T10:30:00Z"
+          }
+  - name: example
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "123e4567-e89b-12d3-a456-426614174001",
+            "from_wallet_id": "023e4567-e89b-12d3-a456-426614174000",
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "status": "completed",
+            "note": "Dinner split",
+            "created_at": "2024-01-15T10:30:00Z"
+          }
+  - name: 400 Response
+    description: Bad request - invalid input
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Bad request",
+            "message": "Amount must be at least 1000 piastres",
+            "status_code": 400
+          }
+  - name: 400 Response
+    description: Bad request - cannot transfer to self
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Bad request",
+            "message": "Can not transfer to self",
+            "status_code": 400
+          }
+  - name: 400 Response
+    description: Bad request - insufficient funds
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Bad request",
+            "message": "Insufficient funds",
+            "status_code": 400
+          }
+  - name: 400 Response
+    description: Bad request - scheduled time must be in future
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Bad request",
+            "message": "Scheduled time must be in the future",
+            "status_code": 400
+          }
+  - name: 401 Response
+    description: Unauthorized
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 401
+      statusText: Unauthorized
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "unauthorized",
+            "message": "Missing or invalid authorization token",
+            "status_code": 401
+          }
+  - name: 404 Response
+    description: Not Found
+    request:
+      url: "{{baseUrl}}/transfers/"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split"
+          }
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Wallet not found",
+            "message": "Wallet not found",
+            "status_code": 404
+          }

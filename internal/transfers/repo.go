@@ -19,7 +19,9 @@ type transfersRepo interface {
 		arg repo.UpdateTransferWithTransactionIdParams,
 	) (repo.Transfer, error)
 	GetTransferById(ctx context.Context, id pgtype.UUID) (repo.Transfer, error)
+	GetTransferByIdWithUser(ctx context.Context, id pgtype.UUID) (repo.GetTransferByIdWithUserRow, error)
 	GetTransfersByWalletId(ctx context.Context, toWalletID pgtype.UUID) ([]repo.Transfer, error)
+	GetTransfersByWalletIdWithUser(ctx context.Context, toWalletID pgtype.UUID) ([]repo.GetTransfersByWalletIdWithUserRow, error)
 	CreateScheduledTransfer(ctx context.Context, arg repo.CreateScheduledTransferParams) (repo.ScheduledTransfer, error)
 	GetScheduledTransferById(ctx context.Context, id pgtype.UUID) (repo.ScheduledTransfer, error)
 	GetScheduledTransferByTransferId(ctx context.Context, transferID pgtype.UUID) (repo.ScheduledTransfer, error)
@@ -66,11 +68,25 @@ func (r *TransfersRepo) GetTransferById(
 	return r.db.GetDBTX(ctx).GetTransferById(ctx, id)
 }
 
+func (r *TransfersRepo) GetTransferByIdWithUser(
+	ctx context.Context,
+	id pgtype.UUID,
+) (repo.GetTransferByIdWithUserRow, error) {
+	return r.db.GetDBTX(ctx).GetTransferByIdWithUser(ctx, id)
+}
+
 func (r *TransfersRepo) GetTransfersByWalletId(
 	ctx context.Context,
 	walletID pgtype.UUID,
 ) ([]repo.Transfer, error) {
 	return r.db.GetDBTX(ctx).GetTransfersByWalletId(ctx, walletID)
+}
+
+func (r *TransfersRepo) GetTransfersByWalletIdWithUser(
+	ctx context.Context,
+	walletID pgtype.UUID,
+) ([]repo.GetTransfersByWalletIdWithUserRow, error) {
+	return r.db.GetDBTX(ctx).GetTransfersByWalletIdWithUser(ctx, walletID)
 }
 
 func (r *TransfersRepo) CreateScheduledTransfer(

@@ -4,13 +4,17 @@ info:
   type: workspace
 
 collections:
-  - name: "NexusPay API - 1"
+  - name: "nexusapii"
+    path: "collections/nexusapii"
+  - name: "NexusPay API"
     path: "collections/NexusPay API - 1"
 
 specs:
   - name: "openapi"
     path: "../../openapi.yaml"
+  - name: "nexusapii"
+    path: "apispec/nexusapii.yaml"
+  - name: "api"
+    path: "apispec/api.yaml"
 
 docs: ''
-
-activeEnvironmentUid: pwukse000000000000000

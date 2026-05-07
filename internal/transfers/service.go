@@ -344,8 +344,9 @@ func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDRespo
 		return GetTransfersByIDResponse{}, err
 	}
 
-	transfers, err := svc.repo.GetTransfersByWalletId(ctx, pgtype.UUID{
+	transfers, err := svc.repo.GetTransfersByWalletIdWithUser(ctx, pgtype.UUID{
 		Bytes: wallet.ID,
+		Valid: true,
 	})
 
 	if err != nil {
@@ -355,18 +356,34 @@ func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDRespo
 	dtoTransfers := []TransferResponse{}
 
 	for _, t := range transfers {
+		direction := "credit"
+		if uuid.UUID(t.FromWalletID.Bytes) == wallet.ID {
+			direction = "debit"
+		}
+
+		toUser := UserMini{}
+		if t.ToUserID.Bytes != uuid.Nil {
+			toUser = UserMini{
+				ID:       uuid.UUID(t.ToUserID.Bytes),
+				FullName: t.ToUserFullName.String,
+			}
+		}
+
 		dtoTransfers = append(dtoTransfers, TransferResponse{
-			ID:        uuid.UUID(t.ID.Bytes),
-			Amount:    t.Amount,
-			Status:    t.Status,
-			Note:      t.Note.String,
-			CreatedAt: t.CreatedAt.Time,
+			ID:           uuid.UUID(t.ID.Bytes),
+			FromWalletID: uuid.UUID(t.FromWalletID.Bytes),
+			ToWalletID:   uuid.UUID(t.ToWalletID.Bytes),
+			ToUser:       toUser,
+			Amount:       t.Amount,
+			Direction:    direction,
+			Status:       t.Status,
+			Note:         t.Note.String,
+			CreatedAt:    t.CreatedAt.Time,
 		})
 	}
 
 	return GetTransfersByIDResponse{
-		FromWalletID: wallet.ID,
-		Transfers:    dtoTransfers,
+		Transfers: dtoTransfers,
 	}, nil
 }
 
@@ -378,18 +395,45 @@ func (svc *Service) GetTransferByID(
 		return GetTransferByIDResponse{}, ErrBadRequest
 	}
 
-	transfer, err := svc.repo.GetTransferById(ctx, pgtype.UUID{Bytes: req.ID, Valid: true})
+	wallet, err := svc.walletSvc.GetByUserId(ctx)
+	if err != nil {
+		return GetTransferByIDResponse{}, err
+	}
+
+	transfer, err := svc.repo.GetTransferByIdWithUser(ctx, pgtype.UUID{Bytes: req.ID, Valid: true})
 	if err != nil {
 		return GetTransferByIDResponse{}, ErrTransferNotFound
 	}
 
+	if uuid.UUID(transfer.FromWalletID.Bytes) != wallet.ID &&
+		uuid.UUID(transfer.ToWalletID.Bytes) != wallet.ID {
+		return GetTransferByIDResponse{}, ErrWrongOwnership
+	}
+
+	direction := "credit"
+	if uuid.UUID(transfer.FromWalletID.Bytes) == wallet.ID {
+		direction = "debit"
+	}
+
+	toUser := UserMini{}
+	if transfer.ToUserID.Bytes != uuid.Nil {
+		toUser = UserMini{
+			ID:       uuid.UUID(transfer.ToUserID.Bytes),
+			FullName: transfer.ToUserFullName.String,
+		}
+	}
+
 	return GetTransferByIDResponse{
 		Transfer: TransferResponse{
-			ID:        uuid.UUID(transfer.ID.Bytes),
-			Amount:    transfer.Amount,
-			Status:    transfer.Status,
-			Note:      transfer.Note.String,
-			CreatedAt: transfer.CreatedAt.Time,
+			ID:           uuid.UUID(transfer.ID.Bytes),
+			FromWalletID: uuid.UUID(transfer.FromWalletID.Bytes),
+			ToWalletID:   uuid.UUID(transfer.ToWalletID.Bytes),
+			ToUser:       toUser,
+			Amount:       transfer.Amount,
+			Direction:    direction,
+			Status:       transfer.Status,
+			Note:         transfer.Note.String,
+			CreatedAt:    transfer.CreatedAt.Time,
 		},
 	}, nil
 }

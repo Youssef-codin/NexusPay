@@ -196,6 +196,22 @@ func (m *MockTransfersRepo) GetTransfersByWalletId(
 	return args.Get(0).([]repo.Transfer), args.Error(1)
 }
 
+func (m *MockTransfersRepo) GetTransferByIdWithUser(
+	ctx context.Context,
+	id pgtype.UUID,
+) (repo.GetTransferByIdWithUserRow, error) {
+	args := m.Called(ctx, id)
+	return args.Get(0).(repo.GetTransferByIdWithUserRow), args.Error(1)
+}
+
+func (m *MockTransfersRepo) GetTransfersByWalletIdWithUser(
+	ctx context.Context,
+	toWalletID pgtype.UUID,
+) ([]repo.GetTransfersByWalletIdWithUserRow, error) {
+	args := m.Called(ctx, toWalletID)
+	return args.Get(0).([]repo.GetTransfersByWalletIdWithUserRow), args.Error(1)
+}
+
 func (m *MockTransfersRepo) CreateScheduledTransfer(
 	ctx context.Context,
 	arg repo.CreateScheduledTransferParams,
@@ -1069,7 +1085,7 @@ func TestGetTransfers_WalletNotFound(t *testing.T) {
 	}, nil)
 
 	mockTransfersRepo := new(MockTransfersRepo)
-	mockTransfersRepo.On("GetTransfersByWalletId", mock.Anything, mock.Anything).Return([]repo.Transfer{}, nil)
+	mockTransfersRepo.On("GetTransfersByWalletIdWithUser", mock.Anything, mock.Anything).Return([]repo.GetTransfersByWalletIdWithUserRow{}, nil)
 
 	svc := &Service{
 		repo:      mockTransfersRepo,
@@ -1079,7 +1095,7 @@ func TestGetTransfers_WalletNotFound(t *testing.T) {
 	resp, err := svc.GetTransfers(ctx)
 
 	assert.NoError(t, err)
-	assert.Equal(t, walletID, resp.FromWalletID)
+	assert.NotNil(t, resp.Transfers)
 	mockWalletSvc.AssertExpectations(t)
 	mockTransfersRepo.AssertExpectations(t)
 }
@@ -1096,7 +1112,7 @@ func TestGetTransfers_DatabaseError(t *testing.T) {
 		ID:     walletID,
 		UserID: userID,
 	}, nil)
-	mockTransfersRepo.On("GetTransfersByWalletId", mock.Anything, mock.Anything).Return([]repo.Transfer{}, errors.New("db error"))
+	mockTransfersRepo.On("GetTransfersByWalletIdWithUser", mock.Anything, mock.Anything).Return([]repo.GetTransfersByWalletIdWithUserRow{}, errors.New("db error"))
 
 	svc := &Service{
 		repo:      mockTransfersRepo,
@@ -1124,7 +1140,7 @@ func TestGetTransfers_HappyPath(t *testing.T) {
 		ID:     walletID,
 		UserID: userID,
 	}, nil)
-	mockTransfersRepo.On("GetTransfersByWalletId", mock.Anything, mock.Anything).Return([]repo.Transfer{
+	mockTransfersRepo.On("GetTransfersByWalletIdWithUser", mock.Anything, mock.Anything).Return([]repo.GetTransfersByWalletIdWithUserRow{
 		{
 			ID:           pgtype.UUID{Bytes: uuid.New(), Valid: true},
 			FromWalletID: pgtype.UUID{Bytes: walletID, Valid: true},
@@ -1143,7 +1159,6 @@ func TestGetTransfers_HappyPath(t *testing.T) {
 	resp, err := svc.GetTransfers(ctx)
 
 	assert.NoError(t, err)
-	assert.Equal(t, walletID, resp.FromWalletID)
 	assert.Len(t, resp.Transfers, 1)
 	mockWalletSvc.AssertExpectations(t)
 	mockTransfersRepo.AssertExpectations(t)

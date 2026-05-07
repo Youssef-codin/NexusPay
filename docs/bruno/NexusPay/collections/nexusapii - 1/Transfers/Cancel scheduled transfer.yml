@@ -1,7 +1,7 @@
 info:
   name: Cancel scheduled transfer
   type: http
-  seq: 2
+  seq: 4
   tags:
     - Transfers
 
@@ -28,6 +28,30 @@ examples:
     request:
       url: "{{baseUrl}}/transfers/scheduled/:id"
       method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "cancelled_id": "123e4567-e89b-12d3-a456-426614174001"
+          }
+  - name: example
+    request:
+      url: "{{baseUrl}}/transfers/scheduled/:id"
+      method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
     response:
       status: 200
       statusText: OK
@@ -45,6 +69,10 @@ examples:
     request:
       url: "{{baseUrl}}/transfers/scheduled/:id"
       method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
     response:
       status: 400
       statusText: Bad Request
@@ -64,6 +92,10 @@ examples:
     request:
       url: "{{baseUrl}}/transfers/scheduled/:id"
       method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
     response:
       status: 400
       statusText: Bad Request
@@ -83,6 +115,10 @@ examples:
     request:
       url: "{{baseUrl}}/transfers/scheduled/:id"
       method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
     response:
       status: 400
       statusText: Bad Request
@@ -97,11 +133,38 @@ examples:
             "message": "Too late to cancel transfer",
             "status_code": 400
           }
-  - name: 403 Response
-    description: Forbidden - transfer belongs to another user
+  - name: 401 Response
+    description: Unauthorized
     request:
       url: "{{baseUrl}}/transfers/scheduled/:id"
       method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
+    response:
+      status: 401
+      statusText: Unauthorized
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "unauthorized",
+            "message": "Missing or invalid authorization token",
+            "status_code": 401
+          }
+  - name: 403 Response
+    description: Forbidden
+    request:
+      url: "{{baseUrl}}/transfers/scheduled/:id"
+      method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
     response:
       status: 403
       statusText: Forbidden
@@ -117,10 +180,14 @@ examples:
             "status_code": 403
           }
   - name: 404 Response
-    description: Not found - transfer not found
+    description: Not Found
     request:
       url: "{{baseUrl}}/transfers/scheduled/:id"
       method: DELETE
+      params:
+        - name: id
+          value: ""
+          type: path
     response:
       status: 404
       statusText: Not Found
@@ -134,23 +201,4 @@ examples:
             "error": "Transfer was not found",
             "message": "Transfer was not found",
             "status_code": 404
-          }
-  - name: 401 Response
-    description: Unauthorized - missing or invalid token
-    request:
-      url: "{{baseUrl}}/transfers/scheduled/:id"
-      method: DELETE
-    response:
-      status: 401
-      statusText: Unauthorized
-      headers:
-        - name: Content-Type
-          value: application/json
-      body:
-        type: json
-        data: |-
-          {
-            "error": "unauthorized",
-            "message": "Missing or invalid authorization token",
-            "status_code": 401
           }

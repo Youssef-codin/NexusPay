@@ -12,7 +12,7 @@ http:
     type: json
     data: |-
       {
-        "email": "john@gmail.com",
+        "email": "user@gmail.com",
         "password": "password"
       }
   auth: inherit
@@ -109,4 +109,42 @@ examples:
             "error": "user not found",
             "message": "No user found with this email",
             "status_code": 404
+          }
+  - name: example
+    request:
+      url: "{{baseUrl}}/auth/login"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "email": "youssef@gmail.com",
+            "password": "password"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: content-type
+          value: application/json
+        - name: vary
+          value: Origin
+        - name: x-ratelimit-limit
+          value: "15"
+        - name: x-ratelimit-remaining
+          value: "13"
+        - name: x-ratelimit-reset
+          value: "1778113020"
+        - name: date
+          value: Thu, 07 May 2026 00:16:50 GMT
+        - name: content-length
+          value: "343"
+      body:
+        type: json
+        data: |-
+          {
+            "email": "youssef@gmail.com",
+            "full_name": "Youssef Hany",
+            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzgxMTM5MTAsImlhdCI6MTc3ODExMzAxMCwic3ViIjoiNzYzNzQ2ZjgtY2EyOC00OWE2LTkyZjUtMjhlN2YwOWVhMTFjIn0.hF2HnlJMflAosc4TN9lOwMvXyYZW0maM52mX_lqwj6c",
+            "refresh_token": "79bbfb367e6bdb646cbd63a4d67058ac4de02ad35612c54bdc56144c97e8f167"
           }

@@ -85,6 +85,8 @@ func (h *handler) GetTransferByID(w http.ResponseWriter, req *http.Request) erro
 		switch {
 		case errors.Is(err, ErrTransferNotFound):
 			return api.WrappedError(http.StatusNotFound, "Transfer was not found")
+		case errors.Is(err, ErrWrongOwnership):
+			return api.WrappedError(http.StatusForbidden, "Transfer belongs to another user")
 		case errors.Is(err, ErrBadRequest):
 			return api.WrappedError(http.StatusBadRequest, "Bad transfer request")
 		default:

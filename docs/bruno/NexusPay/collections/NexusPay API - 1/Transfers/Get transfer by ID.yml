@@ -37,10 +37,17 @@ examples:
       body:
         type: json
         data: |-
-          {
+{
             "transfer": {
               "id": "123e4567-e89b-12d3-a456-426614174001",
+              "from_wallet_id": "123e4567-e89b-12d3-a456-426614174000",
+              "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
+              "to_user": {
+                "id": "123e4567-e89b-12d3-a456-426614174003",
+                "full_name": "John Doe"
+              },
               "amount_in_piastres": 5000,
+              "direction": "credit",
               "status": "completed",
               "note": "Dinner split",
               "created_at": "2024-01-15T10:30:00Z"
@@ -64,6 +71,25 @@ examples:
             "error": "Bad request",
             "message": "invalid id",
             "status_code": 400
+          }
+  - name: 403 Response
+    description: Forbidden - transfer belongs to another user
+    request:
+      url: "{{baseUrl}}/transfers/:id"
+      method: GET
+    response:
+      status: 403
+      statusText: Forbidden
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Forbidden",
+            "message": "Transfer belongs to another user",
+            "status_code": 403
           }
   - name: 404 Response
     description: Not found - transfer not found
@@ -102,4 +128,45 @@ examples:
             "error": "unauthorized",
             "message": "Missing or invalid authorization token",
             "status_code": 401
+          }
+  - name: example
+    request:
+      url: "{{baseUrl}}/transfers/123e4567-e89b-12d3-a456-426614174001"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: content-type
+          value: application/json
+        - name: vary
+          value: Origin
+        - name: x-ratelimit-limit
+          value: "15"
+        - name: x-ratelimit-remaining
+          value: "13"
+        - name: x-ratelimit-reset
+          value: "1778113020"
+        - name: date
+          value: Thu, 07 May 2026 00:16:50 GMT
+        - name: content-length
+          value: "280"
+      body:
+        type: json
+        data: |-
+          {
+            "transfer": {
+              "id": "123e4567-e89b-12d3-a456-426614174001",
+              "from_wallet_id": "023e4567-e89b-12d3-a456-426614174000",
+              "to_wallet_id": "223e4567-e89b-12d3-a456-426614174002",
+              "to_user": {
+                "id": "323e4567-e89b-12d3-a456-426614174003",
+                "full_name": "John Doe"
+              },
+              "amount_in_piastres": 5000,
+              "direction": "credit",
+              "status": "completed",
+              "note": "Dinner split",
+              "created_at": "2024-01-15T10:30:00Z"
+            }
           }

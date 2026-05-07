@@ -1,0 +1,30 @@
+info:
+  name: Health check endpoint
+  type: http
+  seq: 1
+  tags:
+    - Health
+
+http:
+  method: GET
+  url: "{{baseUrl}}/healthx"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 204 Response
+    description: No Content
+    request:
+      url: "{{baseUrl}}/healthx"
+      method: GET
+    response:
+      status: 204
+      statusText: No Content
+      body:
+        type: text
+        data: ""

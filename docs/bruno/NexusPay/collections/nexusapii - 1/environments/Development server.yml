@@ -1,0 +1,4 @@
+name: Development server
+variables:
+  - name: baseUrl
+    value: http://localhost:3000
