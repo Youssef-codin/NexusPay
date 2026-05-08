@@ -272,8 +272,8 @@ type MockWalletSvc struct {
 	mock.Mock
 }
 
-func (m *MockWalletSvc) GetByUserId(ctx context.Context) (wallet.GetWalletResponse, error) {
-	args := m.Called(ctx)
+func (m *MockWalletSvc) GetByUserId(ctx context.Context, userID uuid.UUID) (wallet.GetWalletResponse, error) {
+	args := m.Called(ctx, userID)
 	return args.Get(0).(wallet.GetWalletResponse), args.Error(1)
 }
 
@@ -366,7 +366,7 @@ func TestCreateTransfer_Validation(t *testing.T) {
 				Amount:     1000,
 			},
 			setupMocks: func(m *MockWalletSvc) {
-				m.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+				m.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 					ID:      senderWalletID,
 					UserID:  userID,
 					Balance: 5000,
@@ -409,7 +409,7 @@ func TestCreateTransfer_GetSenderWalletFails(t *testing.T) {
 
 	t.Run("wallet_not_found", func(t *testing.T) {
 		mockWalletSvc := new(MockWalletSvc)
-		mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{}, wallet.ErrWalletNotFound)
+		mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{}, wallet.ErrWalletNotFound)
 
 		svc := &Service{
 			txManager:      nil,
@@ -429,7 +429,7 @@ func TestCreateTransfer_GetSenderWalletFails(t *testing.T) {
 
 	t.Run("database_error", func(t *testing.T) {
 		mockWalletSvc := new(MockWalletSvc)
-		mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{}, errors.New("db connection error"))
+		mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{}, errors.New("db connection error"))
 
 		svc := &Service{
 			txManager:      nil,
@@ -456,7 +456,7 @@ func TestCreateTransfer_StartTransactionFails(t *testing.T) {
 	mockWalletSvc := new(MockWalletSvc)
 	mockTxManager := new(MockTxManager)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -493,7 +493,7 @@ func TestCreateTransfer_CreateDebitTransactionFails(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -534,7 +534,7 @@ func TestCreateTransfer_CreateCreditTransactionFails(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -583,7 +583,7 @@ func TestCreateTransfer_ExecuteTransfer_SenderWalletNotFound(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -657,7 +657,7 @@ func TestCreateTransfer_ExecuteTransfer_ReceiverWalletNotFound(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -731,7 +731,7 @@ func TestCreateTransfer_ExecuteTransfer_DeductFromBalanceFails(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -810,7 +810,7 @@ func TestCreateTransfer_ExecuteTransfer_AddToWalletFails(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -895,7 +895,7 @@ func TestCreateTransfer_HappyPath(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -997,7 +997,7 @@ func TestCreateTransfer_AtomicityProblem(t *testing.T) {
 	mockTxSvc := new(MockTransactionsSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:      senderWalletID,
 		UserID:  userID,
 		Balance: 5000,
@@ -1079,7 +1079,7 @@ func TestGetTransfers_WalletNotFound(t *testing.T) {
 	walletID := uuid.New()
 
 	mockWalletSvc := new(MockWalletSvc)
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:     walletID,
 		UserID: userID,
 	}, nil)
@@ -1108,7 +1108,7 @@ func TestGetTransfers_DatabaseError(t *testing.T) {
 	mockWalletSvc := new(MockWalletSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:     walletID,
 		UserID: userID,
 	}, nil)
@@ -1136,7 +1136,7 @@ func TestGetTransfers_HappyPath(t *testing.T) {
 	mockWalletSvc := new(MockWalletSvc)
 	mockTransfersRepo := new(MockTransfersRepo)
 
-	mockWalletSvc.On("GetByUserId", mock.Anything).Return(wallet.GetWalletResponse{
+	mockWalletSvc.On("GetByUserId", mock.Anything, mock.Anything).Return(wallet.GetWalletResponse{
 		ID:     walletID,
 		UserID: userID,
 	}, nil)

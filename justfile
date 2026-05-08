@@ -94,6 +94,10 @@ migrate-status:
 migrate-create NAME="migration":
     goose create {{NAME}} sql
 
+[group('db')]
+seed:
+    go run ./cmd/seed
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 [group('setup')]

@@ -9,6 +9,7 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/db"
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
+	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
 	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/google/uuid"
@@ -80,7 +81,13 @@ func (svc *Service) CreateTransfer(
 		return CreateTransferResponse{}, ErrBadRequest
 	}
 
-	w, err := svc.walletSvc.GetByUserId(ctx)
+	userIDStr, err := api.GetTokenUserID(ctx)
+	if err != nil {
+		return CreateTransferResponse{}, err
+	}
+	userUUID, _ := uuid.Parse(userIDStr)
+
+	w, err := svc.walletSvc.GetByUserId(ctx, userUUID)
 	if err != nil {
 		return CreateTransferResponse{}, err
 	}
@@ -339,7 +346,13 @@ func (svc *Service) setBothTransactions(
 }
 
 func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDResponse, err error) {
-	wallet, err := svc.walletSvc.GetByUserId(ctx)
+	userIDStr, err := api.GetTokenUserID(ctx)
+	if err != nil {
+		return GetTransfersByIDResponse{}, err
+	}
+	userUUID, _ := uuid.Parse(userIDStr)
+
+	wallet, err := svc.walletSvc.GetByUserId(ctx, userUUID)
 	if err != nil {
 		return GetTransfersByIDResponse{}, err
 	}
@@ -404,7 +417,13 @@ func (svc *Service) GetTransferByID(
 		return GetTransferByIDResponse{}, ErrBadRequest
 	}
 
-	wallet, err := svc.walletSvc.GetByUserId(ctx)
+	userIDStr, err := api.GetTokenUserID(ctx)
+	if err != nil {
+		return GetTransferByIDResponse{}, err
+	}
+	userUUID, _ := uuid.Parse(userIDStr)
+
+	wallet, err := svc.walletSvc.GetByUserId(ctx, userUUID)
 	if err != nil {
 		return GetTransferByIDResponse{}, err
 	}
@@ -513,7 +532,13 @@ func (svc *Service) CancelScheduledTransfers(
 		return CancelScheduledTransfersResponse{}, err
 	}
 
-	w, err := svc.walletSvc.GetByUserId(txCtx)
+	userIDStr, err := api.GetTokenUserID(ctx)
+	if err != nil {
+		return CancelScheduledTransfersResponse{}, err
+	}
+	userUUID, _ := uuid.Parse(userIDStr)
+
+	w, err := svc.walletSvc.GetByUserId(txCtx, userUUID)
 	if err != nil {
 		return CancelScheduledTransfersResponse{}, err
 	}

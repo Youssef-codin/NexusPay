@@ -18,7 +18,12 @@ func NewHandler(service IService) *handler {
 }
 
 func (h *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
-	res, err := h.svc.GetByUserId(req.Context())
+	var dto GetWalletByUserIdRequest
+	if err := api.Read(req, &dto); err != nil {
+		return api.WrappedError(http.StatusBadRequest, "Bad Request")
+	}
+
+	res, err := h.svc.GetByUserId(req.Context(), dto.UserID)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrWalletNotFound):

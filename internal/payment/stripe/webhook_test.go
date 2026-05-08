@@ -24,8 +24,8 @@ func (m *MockWalletSvc) GetById(ctx context.Context, req wallet.GetWalletRequest
 	return args.Get(0).(wallet.GetWalletResponse), args.Error(1)
 }
 
-func (m *MockWalletSvc) GetByUserId(ctx context.Context) (wallet.GetWalletResponse, error) {
-	args := m.Called(ctx)
+func (m *MockWalletSvc) GetByUserId(ctx context.Context, userID uuid.UUID) (wallet.GetWalletResponse, error) {
+	args := m.Called(ctx, userID)
 	return args.Get(0).(wallet.GetWalletResponse), args.Error(1)
 }
 

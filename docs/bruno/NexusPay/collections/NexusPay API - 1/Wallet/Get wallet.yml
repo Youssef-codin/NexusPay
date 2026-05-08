@@ -11,6 +11,12 @@ http:
   auth:
     type: bearer
     token: "{{token}}"
+  body:
+    type: json
+    data: |-
+      {
+        "user_id": "123e4567-e89b-12d3-a456-426614174000"
+      }
 
 settings:
   encodeUrl: true
@@ -24,6 +30,12 @@ examples:
     request:
       url: "{{baseUrl}}/wallet/"
       method: GET
+      body:
+        type: json
+        data: |-
+          {
+            "user_id": "123e4567-e89b-12d3-a456-426614174000"
+          }
     response:
       status: 200
       statusText: OK
@@ -38,6 +50,29 @@ examples:
             "user_id": "123e4567-e89b-12d3-a456-426614174000",
             "balance": 100000,
             "created_at": "2024-01-15T10:30:00Z"
+          }
+  - name: 400 Response
+    description: Bad request - missing or invalid user_id
+    request:
+      url: "{{baseUrl}}/wallet/"
+      method: GET
+      body:
+        type: json
+        data: |-
+          {}
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "bad request",
+            "message": "Bad Request",
+            "status_code": 400
           }
   - name: 401 Response
     description: Unauthorized - missing or invalid token
@@ -55,37 +90,31 @@ examples:
         data: |-
           {
             "error": "unauthorized",
-            "message": "Missing or invalid authorization token",
+            "message": "Unauthorized",
             "status_code": 401
           }
-  - name: example
+  - name: 404 Response
+    description: Wallet not found for this user
     request:
       url: "{{baseUrl}}/wallet/"
       method: GET
-    response:
-      status: 200
-      statusText: OK
-      headers:
-        - name: content-type
-          value: application/json
-        - name: vary
-          value: Origin
-        - name: x-ratelimit-limit
-          value: "15"
-        - name: x-ratelimit-remaining
-          value: "13"
-        - name: x-ratelimit-reset
-          value: "1778113020"
-        - name: date
-          value: Thu, 07 May 2026 00:16:50 GMT
-        - name: content-length
-          value: "140"
       body:
         type: json
         data: |-
           {
-            "id": "123e4567-e89b-12d3-a456-426614174001",
-            "user_id": "023e4567-e89b-12d3-a456-426614174000",
-            "balance": 100000,
-            "created_at": "2024-01-15T10:30:00Z"
+            "user_id": "123e4567-e89b-12d3-a456-426614174000"
+          }
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "not found",
+            "message": "Wallet for this user was not found",
+            "status_code": 404
           }

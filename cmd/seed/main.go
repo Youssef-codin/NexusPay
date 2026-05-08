@@ -45,9 +45,30 @@ func main() {
 
 	logger.Info("Connected to db")
 
+	ClearDB(ctx, pool, logger)
+
 	queries := repo.New(pool)
 
 	Seed(ctx, queries, logger)
+}
+
+func ClearDB(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) {
+	tables := []string{
+		"scheduled_transfers",
+		"transfers",
+		"transactions",
+		"wallets",
+		"users",
+	}
+
+	for _, table := range tables {
+		_, err := pool.Exec(ctx, "DELETE FROM "+table)
+		if err != nil {
+			logger.Warn("Failed to clear table", "table", table, "error", err)
+		} else {
+			logger.Info("Cleared table", "table", table)
+		}
+	}
 }
 
 func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
@@ -102,6 +123,8 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		{"friend@email.com", "Ahmed Friend", 10000},
 		{"ali@email.com", "Ali", 15000},
 		{"mohamed@email.com", "Mohamed", 20000},
+		{"salary@company.com", "Employer Inc", 0},
+		{"refund@store.com", "Store Refund", 0},
 	}
 
 	otherWallets := make(map[string]pgtype.UUID)
@@ -133,69 +156,76 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		logger.Debug("Created other user/wallet", "email", ou.email, "wallet_id", otherWallet.ID)
 	}
 
-	transfers := []struct {
-		toEmail string
-		amount int64
-		note  string
+	outgoingTransfers := []struct {
+		toEmail    string
+		amount     int64
+		note       string
+		dayOffset  int
+		status     repo.TransferStatus
 	}{
-		{"netflix@email.com", 499, "subscription"},
-		{"spotify@email.com", 199, "subscription"},
-		{"amazon@email.com", 2500, "shopping"},
-		{"uber@email.com", 350, "transport"},
-		{"electricity@provider.com", 1200, "utilities"},
-		{"water@provider.com", 400, "utilities"},
-		{"landlord@email.com", 8000, "rent"},
-		{"grocery@store.com", 1800, "shopping"},
-		{"restaurant@email.com", 750, "food"},
-		{"friend@email.com", 500, "other"},
-		{"ali@email.com", 3000, "other"},
-		{"mohamed@email.com", 4500, "other"},
+		{"netflix@email.com", 499, "subscription", 1, repo.TransferStatusCompleted},
+		{"spotify@email.com", 199, "subscription", 2, repo.TransferStatusCompleted},
+		{"amazon@email.com", 2500, "shopping", 3, repo.TransferStatusCompleted},
+		{"uber@email.com", 350, "transport", 5, repo.TransferStatusCompleted},
+		{"electricity@provider.com", 1200, "utilities", 7, repo.TransferStatusCompleted},
+		{"water@provider.com", 400, "utilities", 8, repo.TransferStatusCompleted},
+		{"landlord@email.com", 8000, "rent", 10, repo.TransferStatusCompleted},
+		{"grocery@store.com", 1800, "shopping", 12, repo.TransferStatusCompleted},
+		{"restaurant@email.com", 750, "food", 14, repo.TransferStatusCompleted},
+		{"friend@email.com", 500, "reimbursement", 15, repo.TransferStatusCompleted},
+		{"ali@email.com", 3000, "lend", 18, repo.TransferStatusCompleted},
+		{"mohamed@email.com", 4500, "group expense", 20, repo.TransferStatusCompleted},
+		{"landlord@email.com", 8000, "rent", 35, repo.TransferStatusPending},
+		{"electricity@provider.com", 1200, "utilities", 38, repo.TransferStatusFailed},
+		{"amazon@email.com", 3500, "shopping", 25, repo.TransferStatusFailed},
 	}
 
-	var totalTransferred int64
-	for _, tr := range transfers {
-		totalTransferred += tr.amount
+	var totalOutgoing int64
+	for _, tr := range outgoingTransfers {
+		if tr.status == repo.TransferStatusCompleted {
+			totalOutgoing += tr.amount
+		}
 	}
 
-	rnd := time.Now().AddDate(0, 0, -30)
-
-	for i, tr := range transfers {
+	for _, tr := range outgoingTransfers {
 		toWalletID := otherWallets[tr.toEmail]
 
-		randomTime := rnd.Add(time.Duration(i) * 24 * time.Hour)
-		if i > 6 {
-			randomTime = randomTime.Add(12 * time.Hour)
-		}
-		_ = randomTime
-
 		note := pgtype.Text{String: tr.note, Valid: true}
+		txStatus := repo.TransactionStatusCompleted
+		if tr.status == repo.TransferStatusPending {
+			txStatus = repo.TransactionStatusPending
+		} else if tr.status == repo.TransferStatusFailed {
+			txStatus = repo.TransactionStatusFailed
+		}
 
 		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID: wallet.ID,
-			Amount:  tr.amount,
-			Type:    repo.TransactionTypeDebit,
-			Status:  repo.TransactionStatusCompleted,
+			WalletID:    wallet.ID,
+			Amount:      tr.amount,
+			Type:        repo.TransactionTypeDebit,
+			Status:      txStatus,
+			Description: pgtype.Text{String: tr.note, Valid: true},
 		})
 		if err != nil {
 			panic(err)
 		}
 
 		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID: toWalletID,
-			Amount:  tr.amount,
-			Type:    repo.TransactionTypeCredit,
-			Status:  repo.TransactionStatusCompleted,
+			WalletID:     toWalletID,
+			Amount:       tr.amount,
+			Type:         repo.TransactionTypeCredit,
+			Status:       txStatus,
+			
 		})
 		if err != nil {
 			panic(err)
 		}
 
-		_, err = queries.CreateTransfer(ctx, repo.CreateTransferParams{
+		transfer, err := queries.CreateTransfer(ctx, repo.CreateTransferParams{
 			FromWalletID:        wallet.ID,
 			ToWalletID:          toWalletID,
-			Amount:             tr.amount,
-			Status:             repo.TransferStatusCompleted,
-			Note:               note,
+			Amount:              tr.amount,
+			Status:              tr.status,
+			Note:                note,
 			DebitTransactionID:  debitTx.ID,
 			CreditTransactionID: creditTx.ID,
 		})
@@ -203,16 +233,145 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 			panic(err)
 		}
 
-		logger.Debug("Created transfer",
+		logger.Debug("Created outgoing transfer",
 			"from", user.Email,
 			"to", tr.toEmail,
 			"amount", tr.amount,
-			"note", tr.note,
+			"status", tr.status,
+		)
+
+		if tr.status == repo.TransferStatusPending {
+			scheduledTime := time.Now().Add(3 * 24 * time.Hour)
+			_, err = queries.CreateScheduledTransfer(ctx, repo.CreateScheduledTransferParams{
+				TransferID:  transfer.ID,
+				ScheduledAt: pgtype.Timestamptz{Time: scheduledTime, Valid: true},
+			})
+			if err != nil {
+				panic(err)
+			}
+			logger.Debug("Created scheduled transfer", "execute_at", scheduledTime)
+		}
+	}
+
+	incomingTransfers := []struct {
+		fromEmail   string
+		amount      int64
+		note        string
+		dayOffset   int
+	}{
+		{"friend@email.com", 500, "reimbursement", 4},
+		{"ali@email.com", 2000, "dinner", 9},
+		{"mohamed@email.com", 5000, "group trip", 16},
+		{"salary@company.com", 25000, "monthly salary", 22},
+		{"friend@email.com", 250, "coffee", 28},
+		{"salary@company.com", 25000, "monthly salary", 50},
+	}
+
+	var totalIncoming int64
+	for _, tr := range incomingTransfers {
+		totalIncoming += tr.amount
+	}
+
+	for _, tr := range incomingTransfers {
+		fromWalletID := otherWallets[tr.fromEmail]
+
+		note := pgtype.Text{String: tr.note, Valid: true}
+
+		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:     wallet.ID,
+			Amount:       tr.amount,
+			Type:         repo.TransactionTypeCredit,
+			Status:       repo.TransactionStatusCompleted,
+			Description:  pgtype.Text{String: tr.note, Valid: true},
+			
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:  fromWalletID,
+			Amount:    tr.amount,
+			Type:      repo.TransactionTypeDebit,
+			Status:    repo.TransactionStatusCompleted,
+			
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = queries.CreateTransfer(ctx, repo.CreateTransferParams{
+			FromWalletID:        fromWalletID,
+			ToWalletID:          wallet.ID,
+			Amount:              tr.amount,
+			Status:              repo.TransferStatusCompleted,
+			Note:                note,
+			DebitTransactionID:  debitTx.ID,
+			CreditTransactionID: creditTx.ID,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		logger.Debug("Created incoming transfer",
+			"from", tr.fromEmail,
+			"to", user.Email,
+			"amount", tr.amount,
 		)
 	}
 
-	finalBalance := wallet.Balance - totalTransferred
+	topUps := []struct {
+		amount    int64
+		desc      string
+		dayOffset int
+	}{
+		{5000, "Bank deposit", 0},
+		{10000, "Stripe top-up", 11},
+		{7500, "Bank transfer", 30},
+	}
 
-	logger.Info("Final wallet balance", "balance", finalBalance, "initial", wallet.Balance, "transferred", totalTransferred)
-	logger.Info("Seed complete!", "email", targetEmail)
+	for _, tu := range topUps {
+		tx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:     wallet.ID,
+			Amount:        tu.amount,
+			Type:          repo.TransactionTypeCredit,
+			Status:        repo.TransactionStatusCompleted,
+			Description:   pgtype.Text{String: tu.desc, Valid: true},
+		})
+		if err != nil {
+			panic(err)
+		}
+		totalIncoming += tu.amount
+
+		logger.Debug("Created top-up", "amount", tu.amount, "desc", tu.desc)
+		_ = tx
+	}
+
+	refundTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+		WalletID:    wallet.ID,
+		Amount:      2500,
+		Type:        repo.TransactionTypeCredit,
+		Status:      repo.TransactionStatusReversed,
+		Description: pgtype.Text{String: "Amazon refund (reversed)", Valid: true},
+	})
+	if err != nil {
+		panic(err)
+	}
+	totalIncoming += 2500
+	_ = refundTx
+	logger.Debug("Created reversed refund", "amount", 2500)
+
+	finalBalance := wallet.Balance - totalOutgoing + totalIncoming
+
+	logger.Info("Final wallet balance", "balance", finalBalance,
+		"initial", wallet.Balance,
+		"outgoing", totalOutgoing,
+		"incoming", totalIncoming)
+	logger.Info("Seed complete!", "email", targetEmail,
+		"total_transfers", len(outgoingTransfers)+len(incomingTransfers),
+		"top_ups", len(topUps),
+		"scheduled", 1,
+		"failed", 2)
 }
+
+	

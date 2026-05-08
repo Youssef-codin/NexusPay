@@ -26,7 +26,7 @@ var (
 
 type IService interface {
 	GetById(ctx context.Context, req GetWalletRequest) (GetWalletResponse, error)
-	GetByUserId(ctx context.Context) (GetWalletResponse, error)
+	GetByUserId(ctx context.Context, userID uuid.UUID) (GetWalletResponse, error)
 	CreateWallet(ctx context.Context, req CreateWalletRequest) (CreateWalletResponse, error)
 	TopUp(ctx context.Context, req TopUpRequest) (TopUpResponse, error)
 	DeductFromBalance(
@@ -80,15 +80,9 @@ func (svc *Service) GetById(ctx context.Context, req GetWalletRequest) (GetWalle
 	}, nil
 }
 
-func (svc *Service) GetByUserId(ctx context.Context) (GetWalletResponse, error) {
-	id, err := api.GetTokenUserID(ctx)
-	if err != nil {
-		return GetWalletResponse{}, err
-	}
-	ctxId, _ := uuid.Parse(id)
-
+func (svc *Service) GetByUserId(ctx context.Context, userID uuid.UUID) (GetWalletResponse, error) {
 	wallet, err := svc.repo.GetWalletByUserId(ctx, pgtype.UUID{
-		Bytes: ctxId,
+		Bytes: userID,
 		Valid: true,
 	})
 

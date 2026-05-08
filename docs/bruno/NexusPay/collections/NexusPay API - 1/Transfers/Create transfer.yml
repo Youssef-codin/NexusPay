@@ -89,36 +89,6 @@ examples:
             "note": "Rent payment",
             "created_at": "2024-01-15T10:30:00Z"
           }
-  - name: example
-    request:
-      url: "{{baseUrl}}/transfers/"
-      method: POST
-      body:
-        type: json
-        data: |-
-          {
-            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
-            "amount_in_piastres": 5000,
-            "note": "Dinner split"
-          }
-    response:
-      status: 200
-      statusText: OK
-      headers:
-        - name: Content-Type
-          value: application/json
-      body:
-        type: json
-        data: |-
-          {
-            "id": "123e4567-e89b-12d3-a456-426614174001",
-            "from_wallet_id": "023e4567-e89b-12d3-a456-426614174000",
-            "to_wallet_id": "123e4567-e89b-12d3-a456-426614174002",
-            "amount_in_piastres": 5000,
-            "status": "completed",
-            "note": "Dinner split",
-            "created_at": "2024-01-15T10:30:00Z"
-          }
   - name: 400 Response
     description: Bad request - invalid input
     request:

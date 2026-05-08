@@ -8,6 +8,9 @@ info:
 http:
   method: POST
   url: "{{baseUrl}}/webhook/stripe"
+  headers:
+    - name: Stripe-Signature
+      value: whsec_test_signature
   body:
     type: json
     data: |-
@@ -23,9 +26,6 @@ http:
           }
         }
       }
-  headers:
-    - name: Stripe-Signature
-      value: "whsec_test_signature"
   auth: inherit
 
 settings:
@@ -42,7 +42,7 @@ examples:
       method: POST
       headers:
         - name: Stripe-Signature
-          value: "whsec_test_signature"
+          value: whsec_test_signature
       body:
         type: json
         data: |-
@@ -77,7 +77,7 @@ examples:
       method: POST
       headers:
         - name: Stripe-Signature
-          value: "invalid_signature"
+          value: invalid_signature
       body:
         type: json
         data: |-
@@ -106,44 +106,4 @@ examples:
             "error": "invalid signature",
             "message": "Webhook signature verification failed",
             "status_code": 400
-          }
-  - name: example
-    request:
-      url: "{{baseUrl}}/webhook/stripe"
-      method: POST
-      headers:
-        - name: Stripe-Signature
-          value: "whsec_test_signature"
-      body:
-        type: json
-        data: |-
-          {
-            "id": "evt_test_webhook",
-            "type": "payment_intent.succeeded",
-            "data": {
-              "object": {
-                "id": "pi_test123",
-                "amount": 5000,
-                "currency": "usd",
-                "status": "succeeded"
-              }
-            }
-          }
-    response:
-      status: 200
-      statusText: OK
-      headers:
-        - name: content-type
-          value: application/json
-        - name: vary
-          value: Origin
-        - name: date
-          value: Thu, 07 May 2026 00:16:50 GMT
-        - name: content-length
-          value: "30"
-      body:
-        type: json
-        data: |-
-          {
-            "received": true
           }

@@ -448,7 +448,7 @@ func TestGetById(t *testing.T) {
 
 func TestGetByUserId(t *testing.T) {
 	userID := uuid.New()
-	ctx := withUserID(context.Background(), userID.String())
+	ctx := context.Background()
 	walletID := uuid.New()
 	now := time.Now()
 
@@ -463,7 +463,7 @@ func TestGetByUserId(t *testing.T) {
 		}, nil)
 
 		svc := &Service{repo: mockRepo}
-		resp, err := svc.GetByUserId(ctx)
+		resp, err := svc.GetByUserId(ctx, userID)
 
 		assert.NoError(t, err)
 		assert.Equal(t, walletID, resp.ID)
@@ -477,7 +477,7 @@ func TestGetByUserId(t *testing.T) {
 			Return(repo.Wallet{}, pgx.ErrNoRows)
 
 		svc := &Service{repo: mockRepo}
-		_, err := svc.GetByUserId(ctx)
+		_, err := svc.GetByUserId(ctx, userID)
 
 		assert.ErrorIs(t, err, ErrWalletNotFound)
 		mockRepo.AssertExpectations(t)

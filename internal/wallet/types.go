@@ -10,6 +10,10 @@ type GetWalletRequest struct {
 	ID uuid.UUID `json:"id" validate:"required,uuid"`
 }
 
+type GetWalletByUserIdRequest struct {
+	UserID uuid.UUID `json:"user_id" validate:"required,uuid"`
+}
+
 type CreateWalletRequest struct {
 	UserID  uuid.UUID `json:"user_id"`
 	Balance int64     `json:"balance_in_piastres"`
