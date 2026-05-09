@@ -127,6 +127,63 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		{"refund@store.com", "Store Refund", 0},
 	}
 
+	additionalUsers := []struct {
+		email   string
+		name    string
+		balance int64
+	}{
+		{"john.smith@email.com", "John Smith", 5000},
+		{"jane.doe@email.com", "Jane Doe", 7500},
+		{"michael.johnson@email.com", "Michael Johnson", 3000},
+		{"sarah.williams@email.com", "Sarah Williams", 6000},
+		{"david.brown@email.com", "David Brown", 8000},
+		{"emily.davis@email.com", "Emily Davis", 4500},
+		{"james.wilson@email.com", "James Wilson", 9000},
+		{"maria.garcia@email.com", "Maria Garcia", 5500},
+		{"robert.miller@email.com", "Robert Miller", 12000},
+		{"linda.martinez@email.com", "Linda Martinez", 4000},
+		{"william.anderson@email.com", "William Anderson", 7000},
+		{"elizabeth.thomas@email.com", "Elizabeth Thomas", 6500},
+		{"john.taylor@email.com", "John Taylor", 3500},
+		{"susan.jackson@email.com", "Susan Jackson", 8500},
+		{"thomas.white@email.com", "Thomas White", 5000},
+		{"karen.harris@email.com", "Karen Harris", 9500},
+		{"christopher.clark@email.com", "Christopher Clark", 6000},
+		{"sandra.lewis@email.com", "Sandra Lewis", 4200},
+		{"daniel.walker@email.com", "Daniel Walker", 11000},
+		{"nancy.hall@email.com", "Nancy Hall", 3800},
+		{"matthew.allen@email.com", "Matthew Allen", 7200},
+		{"betty.young@email.com", "Betty Young", 4800},
+		{"anthony.king@email.com", "Anthony King", 10500},
+		{"helen.wright@email.com", "Helen Wright", 5600},
+		{"joshua.lopez@email.com", "Joshua Lopez", 8200},
+		{"deborah.hill@email.com", "Deborah Hill", 3900},
+		{"andrew.scott@email.com", "Andrew Scott", 13000},
+		{"sharon.green@email.com", "Sharon Green", 4400},
+		{"kevin.adams@email.com", "Kevin Adams", 6800},
+		{"margaret.baker@email.com", "Margaret Baker", 5100},
+		{"brian.nelson@email.com", "Brian Nelson", 9200},
+		{"dorothy.carter@email.com", "Dorothy Carter", 4100},
+		{"george.mitchell@email.com", "George Mitchell", 7800},
+		{"ruth.perez@email.com", "Ruth Perez", 6300},
+		{"paul.roberts@email.com", "Paul Roberts", 11500},
+		{"cynthia.turner@email.com", "Cynthia Turner", 3700},
+		{"mark.phillips@email.com", "Mark Phillips", 8700},
+		{"shirley.campbell@email.com", "Shirley Campbell", 5200},
+		{"steven.parker@email.com", "Steven Parker", 9900},
+		{"catherine.evans@email.com", "Catherine Evans", 4600},
+		{"ronald.edwards@email.com", "Ronald Edwards", 14000},
+		{"angela.collins@email.com", "Angela Collins", 5800},
+		{"timothy.stewart@email.com", "Timothy Stewart", 7500},
+		{"victoria.sanchez@email.com", "Victoria Sanchez", 4300},
+		{"eric.morris@email.com", "Eric Morris", 10200},
+		{"janet.rogers@email.com", "Janet Rogers", 4900},
+		{"jason.reed@email.com", "Jason Reed", 8800},
+		{"stephanie.cook@email.com", "Stephanie Cook", 5400},
+		{"jeffrey.morgan@email.com", "Jeffrey Morgan", 12500},
+		{"pamela.bell@email.com", "Pamela Bell", 4000},
+	}
+
 	otherWallets := make(map[string]pgtype.UUID)
 
 	for _, ou := range otherUsers {
@@ -154,6 +211,117 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 
 		otherWallets[ou.email] = otherWallet.ID
 		logger.Debug("Created other user/wallet", "email", ou.email, "wallet_id", otherWallet.ID)
+	}
+
+	for _, au := range additionalUsers {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		if err != nil {
+			panic(err)
+		}
+
+		otherUser, err := queries.CreateUser(ctx, repo.CreateUserParams{
+			Email:    au.email,
+			Password: string(hashedPassword),
+			FullName: au.name,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		otherWallet, err := queries.CreateWallet(ctx, repo.CreateWalletParams{
+			UserID:  otherUser.ID,
+			Balance: au.balance,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		otherWallets[au.email] = otherWallet.ID
+		logger.Debug("Created additional user/wallet", "email", au.email, "wallet_id", otherWallet.ID)
+	}
+
+	additionalTransfers := []struct {
+		fromEmail string
+		toEmail   string
+		amount    int64
+		note      string
+		status    repo.TransferStatus
+	}{
+		{"john.smith@email.com", "jane.doe@email.com", 500, "dinner", repo.TransferStatusCompleted},
+		{"sarah.williams@email.com", "michael.johnson@email.com", 1000, "lend", repo.TransferStatusCompleted},
+		{"david.brown@email.com", "emily.davis@email.com", 750, "coffee", repo.TransferStatusCompleted},
+		{"james.wilson@email.com", "maria.garcia@email.com", 2000, "rent", repo.TransferStatusCompleted},
+		{"robert.miller@email.com", "linda.martinez@email.com", 1500, "group expense", repo.TransferStatusCompleted},
+		{"william.anderson@email.com", "elizabeth.thomas@email.com", 800, "reimbursement", repo.TransferStatusCompleted},
+		{"john.taylor@email.com", "susan.jackson@email.com", 1200, "shopping", repo.TransferStatusCompleted},
+		{"thomas.white@email.com", "karen.harris@email.com", 600, "lend", repo.TransferStatusCompleted},
+		{"christopher.clark@email.com", "sandra.lewis@email.com", 900, "food", repo.TransferStatusCompleted},
+		{"daniel.walker@email.com", "nancy.hall@email.com", 2500, "rent", repo.TransferStatusCompleted},
+		{"matthew.allen@email.com", "betty.young@email.com", 450, "coffee", repo.TransferStatusCompleted},
+		{"anthony.king@email.com", "helen.wright@email.com", 1800, "lend", repo.TransferStatusCompleted},
+		{"joshua.lopez@email.com", "deborah.hill@email.com", 700, "reimbursement", repo.TransferStatusCompleted},
+		{"andrew.scott@email.com", "sharon.green@email.com", 3000, "group trip", repo.TransferStatusCompleted},
+		{"kevin.adams@email.com", "margaret.baker@email.com", 1100, "shopping", repo.TransferStatusCompleted},
+		{"brian.nelson@email.com", "dorothy.carter@email.com", 850, "dinner", repo.TransferStatusCompleted},
+		{"george.mitchell@email.com", "ruth.perez@email.com", 2200, "rent", repo.TransferStatusCompleted},
+		{"paul.roberts@email.com", "cynthia.turner@email.com", 550, "coffee", repo.TransferStatusCompleted},
+		{"mark.phillips@email.com", "shirley.campbell@email.com", 1300, "lend", repo.TransferStatusCompleted},
+		{"steven.parker@email.com", "catherine.evans@email.com", 950, "food", repo.TransferStatusCompleted},
+		{"ronald.edwards@email.com", "angela.collins@email.com", 4000, "group expense", repo.TransferStatusCompleted},
+		{"timothy.stewart@email.com", "victoria.sanchez@email.com", 680, "reimbursement", repo.TransferStatusCompleted},
+		{"eric.morris@email.com", "janet.rogers@email.com", 1600, "lend", repo.TransferStatusCompleted},
+		{"jason.reed@email.com", "stephanie.cook@email.com", 420, "coffee", repo.TransferStatusCompleted},
+		{"jeffrey.morgan@email.com", "pamela.bell@email.com", 2700, "rent", repo.TransferStatusCompleted},
+		{"jane.doe@email.com", "john.smith@email.com", 300, "refund", repo.TransferStatusCompleted},
+		{"michael.johnson@email.com", "sarah.williams@email.com", 800, "reimbursement", repo.TransferStatusCompleted},
+		{"emily.davis@email.com", "david.brown@email.com", 500, "coffee", repo.TransferStatusCompleted},
+	}
+
+	for _, tr := range additionalTransfers {
+		fromWalletID := otherWallets[tr.fromEmail]
+		toWalletID := otherWallets[tr.toEmail]
+
+		note := pgtype.Text{String: tr.note, Valid: true}
+
+		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:     fromWalletID,
+			Amount:       tr.amount,
+			Type:         repo.TransactionTypeDebit,
+			Status:       repo.TransactionStatusCompleted,
+			Description:  note,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:     toWalletID,
+			Amount:       tr.amount,
+			Type:         repo.TransactionTypeCredit,
+			Status:       repo.TransactionStatusCompleted,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = queries.CreateTransfer(ctx, repo.CreateTransferParams{
+			FromWalletID:        fromWalletID,
+			ToWalletID:          toWalletID,
+			Amount:              tr.amount,
+			Status:              tr.status,
+			Note:                note,
+			DebitTransactionID:  debitTx.ID,
+			CreditTransactionID: creditTx.ID,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		logger.Debug("Created additional transfer",
+			"from", tr.fromEmail,
+			"to", tr.toEmail,
+			"amount", tr.amount,
+		)
 	}
 
 	outgoingTransfers := []struct {
@@ -368,7 +536,8 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		"outgoing", totalOutgoing,
 		"incoming", totalIncoming)
 	logger.Info("Seed complete!", "email", targetEmail,
-		"total_transfers", len(outgoingTransfers)+len(incomingTransfers),
+		"total_transfers", len(outgoingTransfers)+len(incomingTransfers)+len(additionalTransfers),
+		"additional_users", len(additionalUsers),
 		"top_ups", len(topUps),
 		"scheduled", 1,
 		"failed", 2)

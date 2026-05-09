@@ -30,7 +30,7 @@ func NewAuthenticator(secret string, refreshTokenDuration time.Duration) *Authen
 
 // NOTE: sub has the ID
 func (a *Authenticator) MakeJWTToken(claims Claims) string {
-	mappedClaims := map[string]interface{}{"sub": claims.ID}
+	mappedClaims := map[string]any{"sub": claims.ID}
 	jwtauth.SetExpiry(mappedClaims, time.Now().Add(time.Minute*15))
 	jwtauth.SetIssuedNow(mappedClaims)
 
