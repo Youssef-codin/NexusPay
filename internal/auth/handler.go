@@ -4,18 +4,46 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Youssef-codin/NexusPay/internal/security"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
 	"github.com/go-chi/jwtauth/v5"
 )
 
+const refreshCookieName = "refresh_token"
+
 type handler struct {
-	svc IService
+	svc  IService
+	auth *security.Authenticator
 }
 
-func NewHandler(service IService) *handler {
+func NewHandler(service IService, auth *security.Authenticator) *handler {
 	return &handler{
-		svc: service,
+		svc:  service,
+		auth: auth,
 	}
+}
+
+func setRefreshCookie(w http.ResponseWriter, token string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    token,
+		HttpOnly: true,
+		Secure:   false, //NOTE: set to true in production behind HTTPS
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+		MaxAge:   maxAge,
+	})
+}
+
+func clearRefreshCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+		MaxAge:   -1,
+	})
 }
 
 func (h *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
@@ -27,7 +55,7 @@ func (h *handler) TestAuth(w http.ResponseWriter, req *http.Request) error {
 	return nil
 }
 
-func (h *handler) LoginController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) LoginHandler(w http.ResponseWriter, req *http.Request) error {
 	var dto loginRequest
 
 	if err := api.Read(req, &dto); err != nil {
@@ -46,11 +74,12 @@ func (h *handler) LoginController(w http.ResponseWriter, req *http.Request) erro
 		}
 	}
 
+	setRefreshCookie(w, response.RefreshToken, int(h.auth.RefreshTokenDuration.Seconds()))
 	api.Respond(w, response, http.StatusOK)
 	return nil
 }
 
-func (h *handler) RegisterController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) RegisterHandler(w http.ResponseWriter, req *http.Request) error {
 	var dto registerRequest
 
 	if err := api.Read(req, &dto); err != nil {
@@ -69,33 +98,35 @@ func (h *handler) RegisterController(w http.ResponseWriter, req *http.Request) e
 		}
 	}
 
+	setRefreshCookie(w, response.RefreshToken, int(h.auth.RefreshTokenDuration.Seconds()))
 	api.Respond(w, response, http.StatusCreated)
 	return nil
 }
 
-func (h *handler) RefreshController(w http.ResponseWriter, req *http.Request) error {
-	var dto refreshRequest
-
-	if err := api.Read(req, &dto); err != nil {
-		return api.WrappedError(http.StatusBadRequest, "Invalid input")
+func (h *handler) RefreshHandler(w http.ResponseWriter, req *http.Request) error {
+	cookie, err := req.Cookie(refreshCookieName)
+	if err != nil {
+		return api.WrappedError(http.StatusUnauthorized, "missing refresh token")
 	}
 
-	response, err := h.svc.refreshToken(req.Context(), dto)
+	response, err := h.svc.refreshToken(req.Context(), refreshRequest{RefreshToken: cookie.Value})
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):
 			return api.WrappedError(http.StatusNotFound, "User not found")
 		case errors.Is(err, ErrTokenExpired):
-			return api.WrappedError(http.StatusNotFound, "User not found")
+			return api.WrappedError(http.StatusUnauthorized, "Token expired")
 		default:
 			return err
 		}
 	}
+
+	setRefreshCookie(w, response.RefreshToken, int(h.auth.RefreshTokenDuration.Seconds()))
 	api.Respond(w, response, http.StatusOK)
 	return nil
 }
 
-func (h *handler) LogoutController(w http.ResponseWriter, req *http.Request) error {
+func (h *handler) LogoutHandler(w http.ResponseWriter, req *http.Request) error {
 	err := h.svc.logout(req.Context())
 	if err != nil {
 		switch {
@@ -105,6 +136,8 @@ func (h *handler) LogoutController(w http.ResponseWriter, req *http.Request) err
 			return err
 		}
 	}
+
+	clearRefreshCookie(w)
 	api.Respond(w, nil, http.StatusNoContent)
 	return nil
 }

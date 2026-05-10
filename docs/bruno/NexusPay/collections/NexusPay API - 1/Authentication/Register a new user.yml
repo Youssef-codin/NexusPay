@@ -31,7 +31,7 @@ settings:
 
 examples:
   - name: 201 Response
-    description: User successfully registered
+    description: User successfully registered. Refresh token is set as an HTTP-only cookie.
     request:
       url: "{{baseUrl}}/auth/register"
       method: POST
@@ -49,14 +49,15 @@ examples:
       headers:
         - name: Content-Type
           value: application/json
+        - name: Set-Cookie
+          value: refresh_token=<token>; Path=/; HttpOnly; SameSite=Lax
       body:
         type: json
         data: |-
           {
             "email": "john.doe@example.com",
             "full_name": "John Doe",
-            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-            "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
           }
   - name: 400 Response
     description: Bad request - invalid input
@@ -130,6 +131,8 @@ examples:
       headers:
         - name: content-type
           value: application/json
+        - name: set-cookie
+          value: refresh_token=79bbfb367e6bdb646cbd63a4d67058ac4de02ad35612c54bdc56144c97e8f167; Path=/; HttpOnly; SameSite=Lax
         - name: vary
           value: Origin
         - name: x-ratelimit-limit
@@ -141,13 +144,12 @@ examples:
         - name: date
           value: Thu, 07 May 2026 00:16:50 GMT
         - name: content-length
-          value: "280"
+          value: "199"
       body:
         type: json
         data: |-
           {
             "email": "newuser@example.com",
             "full_name": "New User",
-            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzgxMTM5MTAsImlhdCI6MTc3ODExMzAxMCwic3ViIjoiNzYzNzQ2ZjgtY2EyOC00OWE2LTkyZjUtMjhlN2YwOWVhMTFjIn0.hF2HnlJMflAosc4TN9lOwMvXyYZW0maM52mX_lqwj6c",
-            "refresh_token": "79bbfb367e6bdb646cbd63a4d67058ac4de02ad35612c54bdc56144c97e8f167"
+            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzgxMTM5MTAsImlhdCI6MTc3ODExMzAxMCwic3ViIjoiNzYzNzQ2ZjgtY2EyOC00OWE2LTkyZjUtMjhlN2YwOWVhMTFjIn0.hF2HnlJMflAosc4TN9lOwMvXyYZW0maM52mX_lqwj6c"
           }

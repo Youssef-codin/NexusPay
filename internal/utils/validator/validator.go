@@ -11,7 +11,9 @@ import (
 var validate = validator.New()
 
 var (
-	ErrAmountIsTooLow       = errors.New("amount is too low, must be at least 10 EGP (1000 piastres)")
+	ErrAmountIsTooLow = errors.New(
+		"amount is too low, must be at least 10 EGP (1000 piastres)",
+	)
 	ErrInvalidTransactionStatus = errors.New("invalid transaction status")
 	ErrInvalidTransactionType   = errors.New("invalid transaction type")
 	ErrInvalidTransferStatus    = errors.New("invalid transfer status")

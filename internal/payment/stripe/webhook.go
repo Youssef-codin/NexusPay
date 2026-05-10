@@ -57,7 +57,8 @@ func (svc *WebhookService) HandlePaymentSucceeded(
 		return err
 	}
 
-	if transaction.Status == repo.TransactionStatusProcessing {
+	if transaction.Status == repo.TransactionStatusProcessing ||
+		transaction.Status == repo.TransactionStatusCompleted {
 		return ErrAlreadyProcessing
 	}
 

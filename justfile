@@ -8,6 +8,10 @@ default:
 run: up
     air
 
+[group('dev')]
+stripe:
+    stripe listen --forward-to localhost:3000/webhook/stripe
+
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 [group('build')]

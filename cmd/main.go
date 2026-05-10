@@ -15,7 +15,8 @@ func main() {
 	ctx := context.Background()
 
 	cfg := config{
-		addr: ":3000",
+		addr:        ":3000",
+		frontendURL: env.GetEnvVar("FRONTEND_URL", "http://localhost:8000"),
 		db: dbConfig{
 			dsn: env.GetEnvVar(
 				"GOOSE_DBSTRING",

@@ -8,13 +8,6 @@ info:
 http:
   method: POST
   url: "{{baseUrl}}/auth/refresh"
-  body:
-    type: json
-    data: |-
-      {
-        "refresh_token": "8dc954202a3dd5ef04432c9e5e636cd8cf9059fd6a50d31d2bf9c633930f9a8a"
-      }
-  auth: inherit
 
 settings:
   encodeUrl: true
@@ -24,19 +17,35 @@ settings:
 
 examples:
   - name: 200 Response
-    description: Token refreshed successfully
+    description: Token refreshed successfully. A rotated refresh token is set as a new HTTP-only cookie.
     request:
       url: "{{baseUrl}}/auth/refresh"
       method: POST
+      headers:
+        - name: Cookie
+          value: refresh_token=dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4...
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+        - name: Set-Cookie
+          value: refresh_token=<new_token>; Path=/; HttpOnly; SameSite=Lax
       body:
         type: json
         data: |-
           {
-            "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
           }
+  - name: 401 Response (missing cookie)
+    description: Unauthorized - refresh token cookie is missing
+    request:
+      url: "{{baseUrl}}/auth/refresh"
+      method: POST
     response:
-      status: 200
-      statusText: OK
+      status: 401
+      statusText: Unauthorized
       headers:
         - name: Content-Type
           value: application/json
@@ -44,20 +53,38 @@ examples:
         type: json
         data: |-
           {
-            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-            "refresh_token": "bmV3IHJlZnJlc2ggdG9rZW4..."
+            "error": "missing refresh token",
+            "status_code": 401
           }
-  - name: 404 Response
-    description: Not found - invalid or expired refresh token
+  - name: 401 Response (expired token)
+    description: Unauthorized - refresh token has expired
     request:
       url: "{{baseUrl}}/auth/refresh"
       method: POST
+      headers:
+        - name: Cookie
+          value: refresh_token=expired_token_value
+    response:
+      status: 401
+      statusText: Unauthorized
+      headers:
+        - name: Content-Type
+          value: application/json
       body:
         type: json
         data: |-
           {
-            "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+            "error": "Token expired",
+            "status_code": 401
           }
+  - name: 404 Response (invalid token)
+    description: Not found - refresh token does not match any user
+    request:
+      url: "{{baseUrl}}/auth/refresh"
+      method: POST
+      headers:
+        - name: Cookie
+          value: refresh_token=invalid_token_value
     response:
       status: 404
       statusText: Not Found
@@ -69,41 +96,5 @@ examples:
         data: |-
           {
             "error": "User not found",
-            "message": "Invalid or expired refresh token",
             "status_code": 404
-          }
-  - name: example
-    request:
-      url: "{{baseUrl}}/auth/refresh"
-      method: POST
-      body:
-        type: json
-        data: |-
-          {
-            "refresh_token": "79bbfb367e6bdb646cbd63a4d67058ac4de02ad35612c54bdc56144c97e8f167"
-          }
-    response:
-      status: 200
-      statusText: OK
-      headers:
-        - name: content-type
-          value: application/json
-        - name: vary
-          value: Origin
-        - name: x-ratelimit-limit
-          value: "15"
-        - name: x-ratelimit-remaining
-          value: "13"
-        - name: x-ratelimit-reset
-          value: "1778113020"
-        - name: date
-          value: Thu, 07 May 2026 00:16:50 GMT
-        - name: content-length
-          value: "280"
-      body:
-        type: json
-        data: |-
-          {
-            "jwt_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzgxMTM5MTAsImlhdCI6MTc3ODExMzAxMCwic3ViIjoiNzYzNzQ2ZjgtY2EyOC00OWE2LTkyZjUtMjhlN2YwOWVhMTFjIn0.hF2HnlJMflAosc4TN9lOwMvXyYZW0maM52mX_lqwj6c",
-            "refresh_token": "new_refresh_token_placeholder"
           }

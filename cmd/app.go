@@ -47,11 +47,11 @@ func (app *application) mount() http.Handler {
 	rmain.Use(middleware.Logger)
 	rmain.Use(middleware.Recoverer)
 	rmain.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedOrigins:   []string{app.config.frontendURL},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
@@ -73,7 +73,7 @@ func (app *application) mount() http.Handler {
 
 	AuthRepo := auth.NewRepo(app.db)
 	AuthService := auth.NewService(app.db, AuthRepo, UserCache, authenticator, WalletService)
-	AuthHandler := auth.NewHandler(AuthService)
+	AuthHandler := auth.NewHandler(AuthService, authenticator)
 
 	UserRepo := users.NewRepo(app.db)
 	UserService := users.NewService(UserRepo, UserCache)
@@ -113,9 +113,9 @@ func (app *application) mount() http.Handler {
 		})
 
 		rpublic.Route("/auth", func(rauth chi.Router) {
-			rauth.Post("/register", api.Wrap(AuthHandler.RegisterController))
-			rauth.Post("/login", api.Wrap(AuthHandler.LoginController))
-			rauth.Post("/refresh", api.Wrap(AuthHandler.RefreshController))
+			rauth.Post("/register", api.Wrap(AuthHandler.RegisterHandler))
+			rauth.Post("/login", api.Wrap(AuthHandler.LoginHandler))
+			rauth.Post("/refresh", api.Wrap(AuthHandler.RefreshHandler))
 		})
 	})
 
@@ -126,13 +126,14 @@ func (app *application) mount() http.Handler {
 		rprotected.Route("/users", func(r chi.Router) {
 			r.Use(api.NewUserLimiter(50, app.redis))
 			r.Get("/test", api.Wrap(AuthHandler.TestAuth))
-			r.Post("/logout", api.Wrap(AuthHandler.LogoutController))
+			r.Post("/logout", api.Wrap(AuthHandler.LogoutHandler))
 			r.Get("/", api.Wrap(UserHandler.SearchByName))
 		})
 
 		rprotected.Route("/wallet", func(r chi.Router) {
 			r.Use(api.NewUserLimiter(50, app.redis))
-			r.Get("/", api.Wrap(WalletHandler.GetByUserId))
+			r.Get("/payments", api.Wrap(WalletHandler.GetPayments))
+			r.Get("/{userId}", api.Wrap(WalletHandler.GetByUserId))
 			r.Patch("/", api.Wrap(WalletHandler.TopUp))
 		})
 
@@ -201,10 +202,10 @@ func (app *application) run(h http.Handler) error {
 }
 
 type application struct {
-	config           config
-	db               *db.DB
-	redis            *redis.Client
-	redisOpts        *redis.Options
+	config             config
+	db                 *db.DB
+	redis              *redis.Client
+	redisOpts          *redis.Options
 	transfersScheduler *transfers.Scheduler
 }
 
@@ -214,11 +215,12 @@ type stripeConfig struct {
 }
 
 type config struct {
-	addr   string
-	db     dbConfig
-	redis  dbConfig
-	secret string
-	stripe stripeConfig
+	addr        string
+	frontendURL string
+	db          dbConfig
+	redis       dbConfig
+	secret      string
+	stripe      stripeConfig
 }
 
 type dbConfig struct {

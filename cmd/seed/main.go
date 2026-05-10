@@ -106,6 +106,108 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 
 	logger.Info("Created wallet", "id", wallet.ID, "balance", wallet.Balance)
 
+	hashedPassword, err = bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err)
+	}
+
+	richUser, err := queries.CreateUser(ctx, repo.CreateUserParams{
+		Email:    "rich@gmail.com",
+		Password: string(hashedPassword),
+		FullName: "Rich Guy",
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	richWallet, err := queries.CreateWallet(ctx, repo.CreateWalletParams{
+		UserID:  richUser.ID,
+		Balance: 100000000,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Info("Created rich user", "email", richUser.Email, "id", richUser.ID, "balance", richWallet.Balance)
+
+	richOutgoingTransfers := []struct {
+		toEmail   string
+		amount    int64
+		note      string
+		dayOffset int
+		status    repo.TransferStatus
+	}{
+		{"friend@email.com", 50000, "gift", 5, repo.TransferStatusCompleted},
+		{"ali@email.com", 100000, "investment", 15, repo.TransferStatusCompleted},
+		{"mohamed@email.com", 250000, "real estate", 30, repo.TransferStatusCompleted},
+		{"netflix@email.com", 999, "subscription", 45, repo.TransferStatusCompleted},
+		{"amazon@email.com", 15000, "shopping", 60, repo.TransferStatusCompleted},
+	}
+
+	richIncomingTransfers := []struct {
+		fromEmail string
+		amount    int64
+		note      string
+		dayOffset int
+	}{
+		{"salary@company.com", 5000000, "annual bonus", 10},
+		{"salary@company.com", 3000000, "dividend", 40},
+		{"refund@store.com", 10000, "refund", 55},
+	}
+
+	richTopUps := []struct {
+		amount    int64
+		desc      string
+		dayOffset int
+	}{
+		{10000000, "Initial deposit", 0},
+		{5000000, "Wire transfer", 7},
+		{2000000, "Crypto conversion", 20},
+		{1500000, "Stock sale", 35},
+	}
+
+	richScheduledTransfers := []struct {
+		toEmail string
+		amount  int64
+		note    string
+		month   int
+		day     int
+	}{
+		{"friend@email.com", 100000, "monthly allowance", 6, 15},
+		{"landlord@email.com", 50000, "rent", 7, 1},
+		{"grocery@store.com", 25000, "groceries", 8, 1},
+		{"electricity@provider.com", 5000, "utilities", 9, 15},
+		{"netflix@email.com", 999, "subscription", 10, 1},
+	}
+
+	// seed rich user top-ups (credit transactions with no transfer)
+	for _, tu := range richTopUps {
+		createdAt := time.Now().AddDate(0, 0, -tu.dayOffset)
+		_ = createdAt
+		_, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:    richWallet.ID,
+			Amount:      tu.amount,
+			Type:        repo.TransactionTypeCredit,
+			Status:      repo.TransactionStatusCompleted,
+			Description: pgtype.Text{String: tu.desc, Valid: true},
+		})
+		if err != nil {
+			panic(err)
+		}
+		logger.Debug("Created rich top-up", "amount", tu.amount)
+	}
+
+	// these are inserted after otherWallets is populated (target wallets must exist first)
+	pendingRichOutgoing := richOutgoingTransfers
+	pendingRichIncoming := richIncomingTransfers
+	pendingRichScheduled := richScheduledTransfers
+
+	logger.Info("Rich user seeded", "email", richUser.Email,
+		"outgoing_transfers", len(richOutgoingTransfers),
+		"incoming_transfers", len(richIncomingTransfers),
+		"top_ups", len(richTopUps),
+		"scheduled", len(richScheduledTransfers))
+
 	otherUsers := []struct {
 		email   string
 		name    string
@@ -237,7 +339,13 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		}
 
 		otherWallets[au.email] = otherWallet.ID
-		logger.Debug("Created additional user/wallet", "email", au.email, "wallet_id", otherWallet.ID)
+		logger.Debug(
+			"Created additional user/wallet",
+			"email",
+			au.email,
+			"wallet_id",
+			otherWallet.ID,
+		)
 	}
 
 	additionalTransfers := []struct {
@@ -248,33 +356,189 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		status    repo.TransferStatus
 	}{
 		{"john.smith@email.com", "jane.doe@email.com", 500, "dinner", repo.TransferStatusCompleted},
-		{"sarah.williams@email.com", "michael.johnson@email.com", 1000, "lend", repo.TransferStatusCompleted},
-		{"david.brown@email.com", "emily.davis@email.com", 750, "coffee", repo.TransferStatusCompleted},
-		{"james.wilson@email.com", "maria.garcia@email.com", 2000, "rent", repo.TransferStatusCompleted},
-		{"robert.miller@email.com", "linda.martinez@email.com", 1500, "group expense", repo.TransferStatusCompleted},
-		{"william.anderson@email.com", "elizabeth.thomas@email.com", 800, "reimbursement", repo.TransferStatusCompleted},
-		{"john.taylor@email.com", "susan.jackson@email.com", 1200, "shopping", repo.TransferStatusCompleted},
-		{"thomas.white@email.com", "karen.harris@email.com", 600, "lend", repo.TransferStatusCompleted},
-		{"christopher.clark@email.com", "sandra.lewis@email.com", 900, "food", repo.TransferStatusCompleted},
-		{"daniel.walker@email.com", "nancy.hall@email.com", 2500, "rent", repo.TransferStatusCompleted},
-		{"matthew.allen@email.com", "betty.young@email.com", 450, "coffee", repo.TransferStatusCompleted},
-		{"anthony.king@email.com", "helen.wright@email.com", 1800, "lend", repo.TransferStatusCompleted},
-		{"joshua.lopez@email.com", "deborah.hill@email.com", 700, "reimbursement", repo.TransferStatusCompleted},
-		{"andrew.scott@email.com", "sharon.green@email.com", 3000, "group trip", repo.TransferStatusCompleted},
-		{"kevin.adams@email.com", "margaret.baker@email.com", 1100, "shopping", repo.TransferStatusCompleted},
-		{"brian.nelson@email.com", "dorothy.carter@email.com", 850, "dinner", repo.TransferStatusCompleted},
-		{"george.mitchell@email.com", "ruth.perez@email.com", 2200, "rent", repo.TransferStatusCompleted},
-		{"paul.roberts@email.com", "cynthia.turner@email.com", 550, "coffee", repo.TransferStatusCompleted},
-		{"mark.phillips@email.com", "shirley.campbell@email.com", 1300, "lend", repo.TransferStatusCompleted},
-		{"steven.parker@email.com", "catherine.evans@email.com", 950, "food", repo.TransferStatusCompleted},
-		{"ronald.edwards@email.com", "angela.collins@email.com", 4000, "group expense", repo.TransferStatusCompleted},
-		{"timothy.stewart@email.com", "victoria.sanchez@email.com", 680, "reimbursement", repo.TransferStatusCompleted},
-		{"eric.morris@email.com", "janet.rogers@email.com", 1600, "lend", repo.TransferStatusCompleted},
-		{"jason.reed@email.com", "stephanie.cook@email.com", 420, "coffee", repo.TransferStatusCompleted},
-		{"jeffrey.morgan@email.com", "pamela.bell@email.com", 2700, "rent", repo.TransferStatusCompleted},
+		{
+			"sarah.williams@email.com",
+			"michael.johnson@email.com",
+			1000,
+			"lend",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"david.brown@email.com",
+			"emily.davis@email.com",
+			750,
+			"coffee",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"james.wilson@email.com",
+			"maria.garcia@email.com",
+			2000,
+			"rent",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"robert.miller@email.com",
+			"linda.martinez@email.com",
+			1500,
+			"group expense",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"william.anderson@email.com",
+			"elizabeth.thomas@email.com",
+			800,
+			"reimbursement",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"john.taylor@email.com",
+			"susan.jackson@email.com",
+			1200,
+			"shopping",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"thomas.white@email.com",
+			"karen.harris@email.com",
+			600,
+			"lend",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"christopher.clark@email.com",
+			"sandra.lewis@email.com",
+			900,
+			"food",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"daniel.walker@email.com",
+			"nancy.hall@email.com",
+			2500,
+			"rent",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"matthew.allen@email.com",
+			"betty.young@email.com",
+			450,
+			"coffee",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"anthony.king@email.com",
+			"helen.wright@email.com",
+			1800,
+			"lend",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"joshua.lopez@email.com",
+			"deborah.hill@email.com",
+			700,
+			"reimbursement",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"andrew.scott@email.com",
+			"sharon.green@email.com",
+			3000,
+			"group trip",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"kevin.adams@email.com",
+			"margaret.baker@email.com",
+			1100,
+			"shopping",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"brian.nelson@email.com",
+			"dorothy.carter@email.com",
+			850,
+			"dinner",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"george.mitchell@email.com",
+			"ruth.perez@email.com",
+			2200,
+			"rent",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"paul.roberts@email.com",
+			"cynthia.turner@email.com",
+			550,
+			"coffee",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"mark.phillips@email.com",
+			"shirley.campbell@email.com",
+			1300,
+			"lend",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"steven.parker@email.com",
+			"catherine.evans@email.com",
+			950,
+			"food",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"ronald.edwards@email.com",
+			"angela.collins@email.com",
+			4000,
+			"group expense",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"timothy.stewart@email.com",
+			"victoria.sanchez@email.com",
+			680,
+			"reimbursement",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"eric.morris@email.com",
+			"janet.rogers@email.com",
+			1600,
+			"lend",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"jason.reed@email.com",
+			"stephanie.cook@email.com",
+			420,
+			"coffee",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"jeffrey.morgan@email.com",
+			"pamela.bell@email.com",
+			2700,
+			"rent",
+			repo.TransferStatusCompleted,
+		},
 		{"jane.doe@email.com", "john.smith@email.com", 300, "refund", repo.TransferStatusCompleted},
-		{"michael.johnson@email.com", "sarah.williams@email.com", 800, "reimbursement", repo.TransferStatusCompleted},
-		{"emily.davis@email.com", "david.brown@email.com", 500, "coffee", repo.TransferStatusCompleted},
+		{
+			"michael.johnson@email.com",
+			"sarah.williams@email.com",
+			800,
+			"reimbursement",
+			repo.TransferStatusCompleted,
+		},
+		{
+			"emily.davis@email.com",
+			"david.brown@email.com",
+			500,
+			"coffee",
+			repo.TransferStatusCompleted,
+		},
 	}
 
 	for _, tr := range additionalTransfers {
@@ -284,21 +548,21 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		note := pgtype.Text{String: tr.note, Valid: true}
 
 		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID:     fromWalletID,
-			Amount:       tr.amount,
-			Type:         repo.TransactionTypeDebit,
-			Status:       repo.TransactionStatusCompleted,
-			Description:  note,
+			WalletID:    fromWalletID,
+			Amount:      tr.amount,
+			Type:        repo.TransactionTypeDebit,
+			Status:      repo.TransactionStatusCompleted,
+			Description: note,
 		})
 		if err != nil {
 			panic(err)
 		}
 
 		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID:     toWalletID,
-			Amount:       tr.amount,
-			Type:         repo.TransactionTypeCredit,
-			Status:       repo.TransactionStatusCompleted,
+			WalletID: toWalletID,
+			Amount:   tr.amount,
+			Type:     repo.TransactionTypeCredit,
+			Status:   repo.TransactionStatusCompleted,
 		})
 		if err != nil {
 			panic(err)
@@ -324,12 +588,164 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		)
 	}
 
+	// rich user outgoing transfers (otherWallets is now fully populated)
+	for _, tr := range pendingRichOutgoing {
+		toWalletID := otherWallets[tr.toEmail]
+		note := pgtype.Text{String: tr.note, Valid: true}
+		txStatus := repo.TransactionStatusCompleted
+		if tr.status == repo.TransferStatusPending {
+			txStatus = repo.TransactionStatusPending
+		} else if tr.status == repo.TransferStatusFailed {
+			txStatus = repo.TransactionStatusFailed
+		}
+
+		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:    richWallet.ID,
+			Amount:      tr.amount,
+			Type:        repo.TransactionTypeDebit,
+			Status:      txStatus,
+			Description: note,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID: toWalletID,
+			Amount:   tr.amount,
+			Type:     repo.TransactionTypeCredit,
+			Status:   txStatus,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		transfer, err := queries.CreateTransfer(ctx, repo.CreateTransferParams{
+			FromWalletID:        richWallet.ID,
+			ToWalletID:          toWalletID,
+			Amount:              tr.amount,
+			Status:              tr.status,
+			Note:                note,
+			DebitTransactionID:  debitTx.ID,
+			CreditTransactionID: creditTx.ID,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		if tr.status == repo.TransferStatusPending {
+			scheduledTime := time.Now().Add(3 * 24 * time.Hour)
+			_, err = queries.CreateScheduledTransfer(ctx, repo.CreateScheduledTransferParams{
+				TransferID:  transfer.ID,
+				ScheduledAt: pgtype.Timestamptz{Time: scheduledTime, Valid: true},
+			})
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		logger.Debug("Created rich outgoing transfer", "to", tr.toEmail, "amount", tr.amount, "status", tr.status)
+	}
+
+	// rich user incoming transfers
+	for _, tr := range pendingRichIncoming {
+		fromWalletID := otherWallets[tr.fromEmail]
+		note := pgtype.Text{String: tr.note, Valid: true}
+
+		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:    richWallet.ID,
+			Amount:      tr.amount,
+			Type:        repo.TransactionTypeCredit,
+			Status:      repo.TransactionStatusCompleted,
+			Description: note,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID: fromWalletID,
+			Amount:   tr.amount,
+			Type:     repo.TransactionTypeDebit,
+			Status:   repo.TransactionStatusCompleted,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = queries.CreateTransfer(ctx, repo.CreateTransferParams{
+			FromWalletID:        fromWalletID,
+			ToWalletID:          richWallet.ID,
+			Amount:              tr.amount,
+			Status:              repo.TransferStatusCompleted,
+			Note:                note,
+			DebitTransactionID:  debitTx.ID,
+			CreditTransactionID: creditTx.ID,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		logger.Debug("Created rich incoming transfer", "from", tr.fromEmail, "amount", tr.amount)
+	}
+
+	// rich user scheduled transfers (future-dated, no existing transfer record)
+	for _, tr := range pendingRichScheduled {
+		toWalletID := otherWallets[tr.toEmail]
+		note := pgtype.Text{String: tr.note, Valid: true}
+		scheduledAt := time.Date(2026, time.Month(tr.month), tr.day, 9, 0, 0, 0, time.UTC)
+
+		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID:    richWallet.ID,
+			Amount:      tr.amount,
+			Type:        repo.TransactionTypeDebit,
+			Status:      repo.TransactionStatusPending,
+			Description: note,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
+			WalletID: toWalletID,
+			Amount:   tr.amount,
+			Type:     repo.TransactionTypeCredit,
+			Status:   repo.TransactionStatusPending,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		transfer, err := queries.CreateTransfer(ctx, repo.CreateTransferParams{
+			FromWalletID:        richWallet.ID,
+			ToWalletID:          toWalletID,
+			Amount:              tr.amount,
+			Status:              repo.TransferStatusPending,
+			Note:                note,
+			DebitTransactionID:  debitTx.ID,
+			CreditTransactionID: creditTx.ID,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = queries.CreateScheduledTransfer(ctx, repo.CreateScheduledTransferParams{
+			TransferID:  transfer.ID,
+			ScheduledAt: pgtype.Timestamptz{Time: scheduledAt, Valid: true},
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		logger.Debug("Created rich scheduled transfer", "to", tr.toEmail, "scheduled_at", scheduledAt)
+	}
+
 	outgoingTransfers := []struct {
-		toEmail    string
-		amount     int64
-		note       string
-		dayOffset  int
-		status     repo.TransferStatus
+		toEmail   string
+		amount    int64
+		note      string
+		dayOffset int
+		status    repo.TransferStatus
 	}{
 		{"netflix@email.com", 499, "subscription", 1, repo.TransferStatusCompleted},
 		{"spotify@email.com", 199, "subscription", 2, repo.TransferStatusCompleted},
@@ -378,11 +794,10 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		}
 
 		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID:     toWalletID,
-			Amount:       tr.amount,
-			Type:         repo.TransactionTypeCredit,
-			Status:       txStatus,
-			
+			WalletID: toWalletID,
+			Amount:   tr.amount,
+			Type:     repo.TransactionTypeCredit,
+			Status:   txStatus,
 		})
 		if err != nil {
 			panic(err)
@@ -422,10 +837,10 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 	}
 
 	incomingTransfers := []struct {
-		fromEmail   string
-		amount      int64
-		note        string
-		dayOffset   int
+		fromEmail string
+		amount    int64
+		note      string
+		dayOffset int
 	}{
 		{"friend@email.com", 500, "reimbursement", 4},
 		{"ali@email.com", 2000, "dinner", 9},
@@ -446,23 +861,21 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		note := pgtype.Text{String: tr.note, Valid: true}
 
 		creditTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID:     wallet.ID,
-			Amount:       tr.amount,
-			Type:         repo.TransactionTypeCredit,
-			Status:       repo.TransactionStatusCompleted,
-			Description:  pgtype.Text{String: tr.note, Valid: true},
-			
+			WalletID:    wallet.ID,
+			Amount:      tr.amount,
+			Type:        repo.TransactionTypeCredit,
+			Status:      repo.TransactionStatusCompleted,
+			Description: pgtype.Text{String: tr.note, Valid: true},
 		})
 		if err != nil {
 			panic(err)
 		}
 
 		debitTx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID:  fromWalletID,
-			Amount:    tr.amount,
-			Type:      repo.TransactionTypeDebit,
-			Status:    repo.TransactionStatusCompleted,
-			
+			WalletID: fromWalletID,
+			Amount:   tr.amount,
+			Type:     repo.TransactionTypeDebit,
+			Status:   repo.TransactionStatusCompleted,
 		})
 		if err != nil {
 			panic(err)
@@ -500,11 +913,11 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 
 	for _, tu := range topUps {
 		tx, err := queries.CreateTransaction(ctx, repo.CreateTransactionParams{
-			WalletID:     wallet.ID,
-			Amount:        tu.amount,
-			Type:          repo.TransactionTypeCredit,
-			Status:        repo.TransactionStatusCompleted,
-			Description:   pgtype.Text{String: tu.desc, Valid: true},
+			WalletID:    wallet.ID,
+			Amount:      tu.amount,
+			Type:        repo.TransactionTypeCredit,
+			Status:      repo.TransactionStatusCompleted,
+			Description: pgtype.Text{String: tu.desc, Valid: true},
 		})
 		if err != nil {
 			panic(err)
@@ -543,4 +956,3 @@ func Seed(ctx context.Context, queries *repo.Queries, logger *slog.Logger) {
 		"failed", 2)
 }
 
-	

@@ -27,6 +27,7 @@ var (
 type IService interface {
 	GetById(ctx context.Context, req GetWalletRequest) (GetWalletResponse, error)
 	GetByUserId(ctx context.Context, userID uuid.UUID) (GetWalletResponse, error)
+	GetPayments(ctx context.Context) (GetPaymentsResponse, error)
 	CreateWallet(ctx context.Context, req CreateWalletRequest) (CreateWalletResponse, error)
 	TopUp(ctx context.Context, req TopUpRequest) (TopUpResponse, error)
 	DeductFromBalance(
@@ -103,6 +104,47 @@ func (svc *Service) GetByUserId(ctx context.Context, userID uuid.UUID) (GetWalle
 	}, nil
 }
 
+func (svc *Service) GetPayments(ctx context.Context) (GetPaymentsResponse, error) {
+	userIDStr, err := api.GetTokenUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	userUUID, _ := uuid.Parse(userIDStr)
+
+	wallet, err := svc.repo.GetWalletByUserId(ctx, pgtype.UUID{
+		Bytes: userUUID,
+		Valid: true,
+	})
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrWalletNotFound
+		}
+		return nil, err
+	}
+
+	transactions, err := svc.transactionsSvc.GetByWalletId(ctx, uuid.UUID(wallet.ID.Bytes))
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(GetPaymentsResponse, 0)
+	for _, t := range transactions {
+		if t.Type == repo.TransactionTypeCredit {
+			result = append(result, PaymentHistoryItem{
+				ID:          t.ID,
+				Amount:      t.Amount,
+				Type:        string(t.Type),
+				Status:      string(t.Status),
+				Description: t.Description,
+				CreatedAt:   t.CreatedAt,
+			})
+		}
+	}
+
+	return result, nil
+}
+
 func (svc *Service) CreateWallet(
 	ctx context.Context,
 	req CreateWalletRequest,
@@ -167,13 +209,15 @@ func (svc *Service) TopUp(
 		return TopUpResponse{}, err
 	}
 
+	TOP_UP_DESCRIPTION := "Top Up"
+
 	transaction, err := svc.transactionsSvc.CreateTransaction(
 		ctx,
 		transactions.CreateTransactionRequest{
 			WalletID:    uuid.UUID(wallet.ID.Bytes),
 			Amount:      req.Amount,
 			Type:        repo.TransactionTypeCredit,
-			Description: req.Description,
+			Description: TOP_UP_DESCRIPTION,
 		},
 	)
 
@@ -184,7 +228,7 @@ func (svc *Service) TopUp(
 	paymentRes, err := svc.paymentSvc.ProcessPayment(ctx, payment.ProcessPaymentRequest{
 		Amount:        req.Amount,
 		TransactionID: transaction.ID,
-		Description:   req.Description,
+		Description:   TOP_UP_DESCRIPTION,
 	})
 
 	if err != nil {

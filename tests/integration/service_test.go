@@ -3,8 +3,10 @@
 package integration
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +14,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -51,8 +55,6 @@ var (
 	mu              sync.Mutex
 	webhookSecret   string
 	stripeCLICmd    *exec.Cmd
-	stripeCLIStdout *os.File
-	stripeCLIStderr *os.File
 	redisContainer  *rediscontainer.RedisContainer
 	pgContainer     *postgres.PostgresContainer
 	pgPool          *pgxpool.Pool
@@ -61,6 +63,9 @@ var (
 	redisOpts       *goredis.Options
 	testAppInstance *testApp
 )
+
+// ansiEscape strips ANSI terminal color/control codes from strings.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 type testApp struct {
 	server     *http.Server
@@ -73,8 +78,7 @@ func TestMain(m *testing.M) {
 }
 
 func checkStripeCLI() error {
-	cmd := exec.Command("stripe", "listen", "--help")
-	if err := cmd.Run(); err != nil {
+	if err := exec.Command("stripe", "listen", "--help").Run(); err != nil {
 		return fmt.Errorf("stripe CLI required: run 'stripe login' first")
 	}
 	return nil
@@ -87,87 +91,70 @@ func checkStripeKey() error {
 	return nil
 }
 
+// startStripeCLI starts `stripe listen` and captures the webhook signing secret
+// from its output using pipes. The secret is ready before this function returns.
 func startStripeCLI() error {
-	var err error
-	stripeCLIStdout, err = os.CreateTemp("", "stripe-cli-stdout-*.log")
-	if err != nil {
-		return fmt.Errorf("create stdout temp file: %w", err)
-	}
-	stripeCLIStderr, err = os.CreateTemp("", "stripe-cli-stderr-*.log")
-	if err != nil {
-		stripeCLIStdout.Close()
-		return fmt.Errorf("create stderr temp file: %w", err)
-	}
-
 	forwardURL := fmt.Sprintf("http://127.0.0.1:%s/webhook/stripe", serverPort)
-	slog.Info("Starting Stripe CLI forwarding to", "url", forwardURL)
+	slog.Info("Starting Stripe CLI", "url", forwardURL)
 
-	cmd := exec.Command(
-		"stripe", "listen",
+	cmd := exec.Command("stripe", "listen",
 		"--forward-to", forwardURL,
 		"--print-secret",
 	)
-	cmd.Stdout = stripeCLIStdout
-	cmd.Stderr = stripeCLIStderr
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("create stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("create stderr pipe: %w", err)
+	}
 
 	if err := cmd.Start(); err != nil {
-		stripeCLIStdout.Close()
-		stripeCLIStderr.Close()
 		return fmt.Errorf("start stripe listen: %w", err)
 	}
 	stripeCLICmd = cmd
 
-	time.Sleep(3 * time.Second)
+	secretCh := make(chan string, 1)
 
-	stripeCLIStdout.Seek(0, 0)
-	buf := make([]byte, 2048)
-	n, _ := stripeCLIStdout.Read(buf)
-	output := string(buf[:n])
-
-	slog.Info("Stripe CLI output", "output", output)
-
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "whsec_") {
-			webhookSecret = strings.TrimSpace(line)
-			break
+	scanForSecret := func(r io.Reader) {
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			line := ansiEscape.ReplaceAllString(strings.TrimSpace(scanner.Text()), "")
+			// With --print-secret the secret appears as its own line.
+			// Some versions embed it in a longer line: "signing secret is whsec_xxx"
+			if idx := strings.Index(line, "whsec_"); idx >= 0 {
+				secret := strings.Fields(line[idx:])[0]
+				select {
+				case secretCh <- secret:
+				default:
+				}
+			}
 		}
 	}
 
-	if webhookSecret == "" {
-		webhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
+	go scanForSecret(stdoutPipe)
+	go scanForSecret(stderrPipe)
+
+	select {
+	case secret := <-secretCh:
+		webhookSecret = secret
+		slog.Info("Stripe webhook secret captured")
+		return nil
+	case <-time.After(15 * time.Second):
+		cmd.Process.Kill()
+		cmd.Wait()
+		stripeCLICmd = nil
+		return fmt.Errorf("timed out waiting for webhook secret — ensure 'stripe login' was run")
 	}
-
-	if webhookSecret == "" {
-		stopStripeCLI()
-		return fmt.Errorf("failed to get webhook secret from stripe cli - ensure 'stripe login' was run")
-	}
-
-	os.Setenv("STRIPE_WEBHOOK_SECRET", webhookSecret)
-	slog.Info("Stripe webhook secret configured", "prefix", webhookSecret[:min(10, len(webhookSecret))]+"...")
-
-	return nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func stopStripeCLI() {
 	if stripeCLICmd != nil && stripeCLICmd.Process != nil {
 		stripeCLICmd.Process.Kill()
 		stripeCLICmd.Wait()
-	}
-	if stripeCLIStdout != nil {
-		stripeCLIStdout.Close()
-		os.Remove(stripeCLIStdout.Name())
-	}
-	if stripeCLIStderr != nil {
-		stripeCLIStderr.Close()
-		os.Remove(stripeCLIStderr.Name())
+		stripeCLICmd = nil
 	}
 }
 
@@ -239,12 +226,11 @@ func findProjectRoot() (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	for {
 		if _, err := os.Stat(dir + "/go.mod"); err == nil {
 			return dir, nil
 		}
-		parent := dir + "/.."
+		parent := filepath.Dir(dir)
 		if parent == dir {
 			return "", fmt.Errorf("go.mod not found")
 		}
@@ -258,21 +244,17 @@ func runMigrations(ctx context.Context) error {
 		return fmt.Errorf("find project root: %w", err)
 	}
 
-	migrationSQL, err := os.ReadFile(projectRoot + "/internal/db/postgresql/migrations/00001_init.sql")
+	content, err := os.ReadFile(filepath.Join(projectRoot, "internal", "db", "postgresql", "migrations", "00001_init.sql"))
 	if err != nil {
-		return fmt.Errorf("read migration file: %w", err)
+		return fmt.Errorf("read migration: %w", err)
 	}
 
-	statements := parseGooseStatements(string(migrationSQL))
-
-	for _, stmt := range statements {
+	for _, stmt := range parseGooseStatements(string(content)) {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
 			continue
 		}
-
-		_, err := pgPool.Exec(ctx, stmt)
-		if err != nil {
+		if _, err := pgPool.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("execute statement: %w", err)
 		}
 	}
@@ -292,18 +274,15 @@ func parseGooseStatements(content string) []string {
 			inUpBlock = true
 			continue
 		}
-
 		if strings.HasPrefix(trimmed, "-- +goose Down") {
 			inUpBlock = false
 			current.Reset()
 			continue
 		}
-
 		if strings.Contains(trimmed, "-- +goose StatementBegin") {
 			current.Reset()
 			continue
 		}
-
 		if strings.Contains(trimmed, "-- +goose StatementEnd") {
 			if inUpBlock && current.Len() > 0 {
 				statements = append(statements, current.String())
@@ -330,11 +309,13 @@ func cleanup(ctx context.Context) {
 	if redisClient != nil {
 		redisClient.Close()
 	}
-
 	cleanupContainers(ctx)
 	stopStripeCLI()
 }
 
+// setup starts all dependencies, the Stripe CLI (to get the real webhook secret),
+// and then the test HTTP server — in that order so the handler is created with
+// the actual signing secret.
 func setup() error {
 	mu.Lock()
 
@@ -342,13 +323,10 @@ func setup() error {
 		godotenv.Load(projectRoot + "/.env")
 	}
 
-	os.Setenv("STRIPE_WEBHOOK_SKIP_SIGNATURE", "true")
-
 	if err := checkStripeCLI(); err != nil {
 		mu.Unlock()
 		return err
 	}
-
 	if err := checkStripeKey(); err != nil {
 		mu.Unlock()
 		return err
@@ -362,22 +340,22 @@ func setup() error {
 
 	if err := runMigrations(ctx); err != nil {
 		cleanup(ctx)
+		mu.Unlock()
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
-	app, err := setupTestApp()
-	if err != nil {
-		cleanup(ctx)
-		mu.Unlock()
-		return fmt.Errorf("setup test app: %w", err)
-	}
-	slog.Info("HTTP server started, now starting Stripe CLI...")
-
+	// Start the Stripe CLI before the app so we have the signing secret ready
+	// when we construct the webhook handler.
 	if err := startStripeCLI(); err != nil {
-		app.close()
 		cleanup(ctx)
 		mu.Unlock()
 		return fmt.Errorf("start stripe cli: %w", err)
+	}
+
+	if _, err := setupTestApp(); err != nil {
+		cleanup(ctx)
+		mu.Unlock()
+		return fmt.Errorf("setup test app: %w", err)
 	}
 
 	return nil
@@ -386,71 +364,6 @@ func setup() error {
 func teardown() {
 	ctx := context.Background()
 	cleanup(ctx)
-	mu.Unlock()
-}
-
-func setupValidation() error {
-	mu.Lock()
-
-	if projectRoot, err := findProjectRoot(); err == nil {
-		godotenv.Load(projectRoot + "/.env")
-	}
-
-	os.Setenv("STRIPE_WEBHOOK_SKIP_SIGNATURE", "true")
-
-	if err := checkStripeCLI(); err != nil {
-		mu.Unlock()
-		return err
-	}
-
-	if err := checkStripeKey(); err != nil {
-		mu.Unlock()
-		return err
-	}
-
-	ctx := context.Background()
-	if err := startTestcontainers(ctx); err != nil {
-		mu.Unlock()
-		return fmt.Errorf("start testcontainers: %w", err)
-	}
-
-	if err := runMigrations(ctx); err != nil {
-		cleanup(ctx)
-		mu.Unlock()
-		return fmt.Errorf("run migrations: %w", err)
-	}
-
-	app, err := setupTestApp()
-	if err != nil {
-		cleanup(ctx)
-		mu.Unlock()
-		return fmt.Errorf("setup test app: %w", err)
-	}
-	_ = app
-
-	if err := startStripeCLI(); err != nil {
-		slog.Warn("Stripe CLI not started, webhook tests may fail", "error", err)
-	} else {
-		os.Setenv("STRIPE_WEBHOOK_SECRET", webhookSecret)
-	}
-
-	return nil
-}
-
-func teardownValidation() {
-	ctx := context.Background()
-	if testAppInstance != nil {
-		testAppInstance.close()
-		testAppInstance = nil
-	}
-	if pgPool != nil {
-		pgPool.Close()
-	}
-	if redisClient != nil {
-		redisClient.Close()
-	}
-
-	cleanupContainers(ctx)
 	mu.Unlock()
 }
 
@@ -479,7 +392,7 @@ func setupTestApp() (*testApp, error) {
 	transfersHandler := transfers.NewHandler(transfersService)
 
 	authService := auth.NewService(database, authRepo, userCache, authenticator, walletService)
-	authHandler := auth.NewHandler(authService)
+	authHandler := auth.NewHandler(authService, authenticator)
 
 	userRepo := users.NewRepo(database)
 	userService := users.NewService(userRepo, userCache)
@@ -506,8 +419,8 @@ func setupTestApp() (*testApp, error) {
 		})
 
 		rpublic.Route("/auth", func(r chi.Router) {
-			r.Post("/register", api.Wrap(authHandler.RegisterController))
-			r.Post("/login", api.Wrap(authHandler.LoginController))
+			r.Post("/register", api.Wrap(authHandler.RegisterHandler))
+			r.Post("/login", api.Wrap(authHandler.LoginHandler))
 		})
 	})
 
@@ -516,7 +429,7 @@ func setupTestApp() (*testApp, error) {
 		rprotected.Use(authenticator.AuthHandler())
 
 		rprotected.Route("/wallet", func(r chi.Router) {
-			r.Get("/", api.Wrap(walletHandler.GetByUserId))
+			r.Get("/{userId}", api.Wrap(walletHandler.GetByUserId))
 			r.Patch("/", api.Wrap(walletHandler.TopUp))
 		})
 
@@ -528,10 +441,6 @@ func setupTestApp() (*testApp, error) {
 
 	r.Route("/webhook", func(r chi.Router) {
 		r.Post("/stripe", api.Wrap(webhookHandler.Handle))
-		r.Get("/debug", func(w http.ResponseWriter, r *http.Request) {
-			slog.Info("DEBUG: webhook endpoint hit!")
-			w.Write([]byte("ok"))
-		})
 	})
 
 	server := &http.Server{
@@ -582,7 +491,7 @@ func (app *testApp) close() {
 	app.server.Shutdown(ctx)
 }
 
-func (app *testApp) registerUser(t *testing.T, email, password string) (string, string) {
+func (app *testApp) registerUser(t *testing.T, email, password string) string {
 	reqBody := map[string]string{
 		"email":     email,
 		"password":  password,
@@ -597,17 +506,14 @@ func (app *testApp) registerUser(t *testing.T, email, password string) (string, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		body, _ := json.Marshal(map[string]interface{}{})
-		resp.Body.Read(body)
-		t.Fatalf("register failed with status %d, body: %s", resp.StatusCode, string(body))
+		rawBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("register failed with status %d, body: %s", resp.StatusCode, rawBody)
 	}
 
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	jwtToken := result["jwt_token"].(string)
-
-	return jwtToken, ""
+	return result["jwt_token"].(string)
 }
 
 func (app *testApp) loginUser(t *testing.T, email, password string) string {
@@ -643,8 +549,24 @@ func (app *testApp) confirmPayment(paymentIntentID string) error {
 	return err
 }
 
+func userIDFromToken(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims map[string]interface{}
+	json.Unmarshal(payload, &claims)
+	sub, _ := claims["sub"].(string)
+	return sub
+}
+
 func (app *testApp) getWallet(t *testing.T, token string) map[string]interface{} {
-	req, err := http.NewRequest("GET", app.addr+"/wallet/", nil)
+	userID := userIDFromToken(token)
+	req, err := http.NewRequest("GET", app.addr+"/wallet/"+userID, nil)
 	if err != nil {
 		t.Fatalf("get wallet request failed: %v", err)
 	}
@@ -663,28 +585,8 @@ func (app *testApp) getWallet(t *testing.T, token string) map[string]interface{}
 }
 
 func (app *testApp) topUp(t *testing.T, token string, amount int64) (map[string]interface{}, int) {
-	reqBody := map[string]interface{}{
-		"amount_in_piastres": amount,
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req, err := http.NewRequest("PATCH", app.addr+"/wallet/", bytes.NewBuffer(body))
-	if err != nil {
-		t.Fatalf("topup request failed: %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := app.httpClient.Do(req)
-	if err != nil {
-		t.Fatalf("topup request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-
-	return result, resp.StatusCode
+	result, status, _ := app.topUpWithBody(t, token, amount)
+	return result, status
 }
 
 func (app *testApp) topUpWithBody(t *testing.T, token string, amount int64) (map[string]interface{}, int, string) {
@@ -714,15 +616,15 @@ func (app *testApp) topUpWithBody(t *testing.T, token string, amount int64) (map
 }
 
 func (app *testApp) getWalletBalance(t *testing.T, token string) int64 {
-	wallet := app.getWallet(t, token)
-	if balance, ok := wallet["balance"].(float64); ok {
+	w := app.getWallet(t, token)
+	if balance, ok := w["balance"].(float64); ok {
 		return int64(balance)
 	}
 	return 0
 }
 
-func waitForWebhook(processingTimeout time.Duration, checkFn func() bool) error {
-	deadline := time.Now().Add(processingTimeout)
+func waitForWebhook(timeout time.Duration, checkFn func() bool) error {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if checkFn() {
 			return nil
@@ -733,28 +635,12 @@ func waitForWebhook(processingTimeout time.Duration, checkFn func() bool) error 
 }
 
 func TestTopUp_HappyPath_Integration(t *testing.T) {
-	slog.Info("TEST: Starting setup...")
 	if err := setup(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	slog.Info("TEST: Setup complete, testAppInstance=", "nil", testAppInstance == nil)
 	defer teardown()
 
 	app := testAppInstance
-	if app == nil {
-		t.Fatal("test app not initialized")
-	}
-
-	slog.Info("TEST: Using app at", "addr", app.addr)
-	webhookURL := app.addr + "/webhook/stripe"
-	slog.Info("Testing webhook connectivity", "url", webhookURL)
-
-	testResp, err := app.httpClient.Post(app.addr+"/webhook/debug", "text/plain", nil)
-	if err != nil {
-		t.Logf("DEBUG endpoint error: %v", err)
-	} else {
-		t.Logf("DEBUG endpoint status: %d", testResp.StatusCode)
-	}
 
 	resp, err := app.httpClient.Get(app.addr + "/health")
 	if err != nil {
@@ -764,35 +650,31 @@ func TestTopUp_HappyPath_Integration(t *testing.T) {
 	}
 
 	userEmail := fmt.Sprintf("user-%s@example.com", uuid.New().String())
-	accessToken, _ := app.registerUser(t, userEmail, testUserPassword)
+	accessToken := app.registerUser(t, userEmail, testUserPassword)
 
-	initialWallet := app.getWallet(t, accessToken)
-	initialBalance := int64(initialWallet["balance"].(float64))
+	initialBalance := app.getWalletBalance(t, accessToken)
 
 	topUpAmount := int64(50000)
 	result, statusCode, body := app.topUpWithBody(t, accessToken, topUpAmount)
-
 	if statusCode != http.StatusOK {
-		t.Fatalf("topup failed with status %d, response: %s", statusCode, string(body))
+		t.Fatalf("topup failed with status %d, response: %s", statusCode, body)
 	}
 
 	paymentID := result["provider_payment_id"].(string)
 	slog.Info("Payment created", "payment_id", paymentID)
 
-	err = app.confirmPayment(paymentID)
-	if err != nil {
+	if err := app.confirmPayment(paymentID); err != nil {
 		t.Fatalf("confirm payment failed: %v", err)
 	}
 	slog.Info("Payment confirmed, waiting for webhook...")
 
 	err = waitForWebhook(15*time.Second, func() bool {
-		currentBalance := app.getWalletBalance(t, accessToken)
-		slog.Info("Checking balance", "current", currentBalance, "expected", initialBalance+topUpAmount)
-		return currentBalance == initialBalance+topUpAmount
+		current := app.getWalletBalance(t, accessToken)
+		slog.Info("Checking balance", "current", current, "expected", initialBalance+topUpAmount)
+		return current == initialBalance+topUpAmount
 	})
-
 	if err != nil {
-		t.Fatalf("did not receive payment_succeeded webhook: %v", err)
+		t.Fatalf("did not receive payment_intent.succeeded webhook: %v", err)
 	}
 
 	finalBalance := app.getWalletBalance(t, accessToken)
@@ -810,36 +692,28 @@ func TestTopUp_PaymentFailed_Integration(t *testing.T) {
 	app := testAppInstance
 
 	userEmail := fmt.Sprintf("user-%s@example.com", uuid.New().String())
-	accessToken, _ := app.registerUser(t, userEmail, testUserPassword)
+	accessToken := app.registerUser(t, userEmail, testUserPassword)
 
-	initialWallet := app.getWallet(t, accessToken)
-	initialBalance := int64(initialWallet["balance"].(float64))
+	initialBalance := app.getWalletBalance(t, accessToken)
 
-	reqBody := map[string]interface{}{
-		"amount":         2000,
-		"payment_method": "pm_card_visa_chargeDeclined",
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req, _ := http.NewRequest("PATCH", app.addr+"/wallet/", bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := app.httpClient.Do(req)
-	if err != nil {
-		t.Fatalf("topup request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		err = waitForWebhook(10*time.Second, func() bool {
-			wallet := app.getWallet(t, accessToken)
-			balance := int64(wallet["balance"].(float64))
-			return balance == initialBalance
-		})
-		if err != nil {
-			t.Logf("webhook timeout (payment may have failed immediately): %v", err)
+	// pm_card_visa_chargeDeclined causes Stripe to decline immediately;
+	// the top-up API creates the intent but the payment never succeeds.
+	result, statusCode, _ := app.topUpWithBody(t, accessToken, 10000)
+	if statusCode == http.StatusOK {
+		paymentID, _ := result["provider_payment_id"].(string)
+		if paymentID != "" {
+			// Attempt to confirm with a declining card — Stripe will reject it.
+			params := &stripeapi.PaymentIntentConfirmParams{
+				PaymentMethod: stripeapi.String("pm_card_visa_chargeDeclined"),
+			}
+			stripeapi.Key = os.Getenv("STRIPE_SECRET_KEY")
+			paymentintent.Confirm(paymentID, params)
 		}
+
+		// Wait for the payment_intent.payment_failed webhook to fire.
+		waitForWebhook(10*time.Second, func() bool {
+			return app.getWalletBalance(t, accessToken) == initialBalance
+		})
 	}
 
 	time.Sleep(1 * time.Second)
@@ -850,18 +724,19 @@ func TestTopUp_PaymentFailed_Integration(t *testing.T) {
 }
 
 func TestTopUp_Validation_Integration(t *testing.T) {
-	if err := setupValidation(); err != nil {
+	if err := setup(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	defer teardownValidation()
+	defer teardown()
 
 	app := testAppInstance
 
 	userEmail := fmt.Sprintf("user-%s@example.com", uuid.New().String())
-	accessToken, _ := app.registerUser(t, userEmail, testUserPassword)
+	accessToken := app.registerUser(t, userEmail, testUserPassword)
 
+	// Amount below minimum should be rejected.
 	reqBody := map[string]interface{}{
-		"amount": 500,
+		"amount_in_piastres": 500,
 	}
 	body, _ := json.Marshal(reqBody)
 
@@ -876,15 +751,15 @@ func TestTopUp_Validation_Integration(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected status 400 for amount below minimum, got %d", resp.StatusCode)
+		t.Errorf("expected 400 for amount below minimum, got %d", resp.StatusCode)
 	}
 }
 
 func TestConcurrentTransfers_Integration(t *testing.T) {
-	if err := setupValidation(); err != nil {
+	if err := setup(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	defer teardownValidation()
+	defer teardown()
 
 	app := testAppInstance
 
@@ -892,15 +767,13 @@ func TestConcurrentTransfers_Integration(t *testing.T) {
 	receiver1Email := fmt.Sprintf("receiver1-%s@example.com", uuid.New().String())
 	receiver2Email := fmt.Sprintf("receiver2-%s@example.com", uuid.New().String())
 
-	senderToken, _ := app.registerUser(t, senderEmail, testUserPassword)
-	receiver1Token, _ := app.registerUser(t, receiver1Email, testUserPassword)
-	receiver2Token, _ := app.registerUser(t, receiver2Email, testUserPassword)
+	senderToken := app.registerUser(t, senderEmail, testUserPassword)
+	receiver1Token := app.registerUser(t, receiver1Email, testUserPassword)
+	receiver2Token := app.registerUser(t, receiver2Email, testUserPassword)
 
 	_, senderStatus, senderBodyStr := app.topUpWithBody(t, senderToken, 20000)
 	_, r1Status, r1BodyStr := app.topUpWithBody(t, receiver1Token, 5000)
 	_, r2Status, r2BodyStr := app.topUpWithBody(t, receiver2Token, 5000)
-
-	t.Logf("Topup results - Sender: status=%d, Receiver1: status=%d, Receiver2: status=%d", senderStatus, r1Status, r2Status)
 
 	if senderStatus != 200 || r1Status != 200 || r2Status != 200 {
 		t.Fatalf("topup failed: sender=%d (body: %s), receiver1=%d (body: %s), receiver2=%d (body: %s)",
@@ -916,49 +789,36 @@ func TestConcurrentTransfers_Integration(t *testing.T) {
 	r1PaymentID := r1Body["provider_payment_id"].(string)
 	r2PaymentID := r2Body["provider_payment_id"].(string)
 
-	if senderPaymentID == "" || r1PaymentID == "" || r2PaymentID == "" {
-		t.Fatalf("failed to get payment IDs from response")
-	}
-
 	if err := app.confirmPayment(senderPaymentID); err != nil {
-		t.Fatalf("confirm payment failed: %v", err)
+		t.Fatalf("confirm sender payment failed: %v", err)
 	}
 	if err := app.confirmPayment(r1PaymentID); err != nil {
-		t.Fatalf("confirm payment failed: %v", err)
+		t.Fatalf("confirm receiver1 payment failed: %v", err)
 	}
 	if err := app.confirmPayment(r2PaymentID); err != nil {
-		t.Fatalf("confirm payment failed: %v", err)
+		t.Fatalf("confirm receiver2 payment failed: %v", err)
 	}
 
-	for i := 0; i < 10; i++ {
-		senderWallet := app.getWallet(t, senderToken)
-		receiver1Wallet := app.getWallet(t, receiver1Token)
-		receiver2Wallet := app.getWallet(t, receiver2Token)
-		senderBalance := int64(senderWallet["balance"].(float64))
-		receiver1Balance := int64(receiver1Wallet["balance"].(float64))
-		receiver2Balance := int64(receiver2Wallet["balance"].(float64))
-		if senderBalance >= 20000 && receiver1Balance >= 5000 && receiver2Balance >= 5000 {
-			break
-		}
-		t.Logf("Waiting for topups... Sender: %d, R1: %d, R2: %d", senderBalance, receiver1Balance, receiver2Balance)
-		time.Sleep(1 * time.Second)
+	// Wait for all three top-ups to land via webhook.
+	err := waitForWebhook(30*time.Second, func() bool {
+		sb := app.getWalletBalance(t, senderToken)
+		r1b := app.getWalletBalance(t, receiver1Token)
+		r2b := app.getWalletBalance(t, receiver2Token)
+		t.Logf("Waiting for top-ups... Sender: %d, R1: %d, R2: %d", sb, r1b, r2b)
+		return sb >= 20000 && r1b >= 5000 && r2b >= 5000
+	})
+	if err != nil {
+		t.Fatalf("top-ups did not complete: %v", err)
 	}
 
-	senderWallet := app.getWallet(t, senderToken)
 	receiver1Wallet := app.getWallet(t, receiver1Token)
 	receiver2Wallet := app.getWallet(t, receiver2Token)
-
 	receiver1WalletID := receiver1Wallet["id"].(string)
 	receiver2WalletID := receiver2Wallet["id"].(string)
 
-	t.Logf("Initial - Sender: %v, Receiver1: %v, Receiver2: %v",
-		senderWallet["balance"], receiver1Wallet["balance"], receiver2Wallet["balance"])
-
 	var wg sync.WaitGroup
-	errChan := make(chan error, 4)
-	resultChan := make(chan map[string]interface{}, 4)
-
 	wg.Add(2)
+
 	go func() {
 		defer wg.Done()
 		body, _ := json.Marshal(map[string]interface{}{
@@ -968,18 +828,13 @@ func TestConcurrentTransfers_Integration(t *testing.T) {
 		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
 		req.Header.Set("Authorization", "Bearer "+senderToken)
 		req.Header.Set("Content-Type", "application/json")
-
 		resp, err := app.httpClient.Do(req)
 		if err != nil {
-			errChan <- err
+			t.Logf("Transfer to receiver1 failed: %v", err)
 			return
 		}
 		defer resp.Body.Close()
-
-		var result map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
-		resultChan <- result
-		t.Logf("Transfer to receiver1 response: status=%d, result=%v", resp.StatusCode, result)
+		t.Logf("Transfer to receiver1 status: %d", resp.StatusCode)
 	}()
 
 	go func() {
@@ -991,130 +846,117 @@ func TestConcurrentTransfers_Integration(t *testing.T) {
 		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
 		req.Header.Set("Authorization", "Bearer "+senderToken)
 		req.Header.Set("Content-Type", "application/json")
-
 		resp, err := app.httpClient.Do(req)
 		if err != nil {
-			errChan <- err
+			t.Logf("Transfer to receiver2 failed: %v", err)
 			return
 		}
 		defer resp.Body.Close()
-
-		var result map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
-		resultChan <- result
-		t.Logf("Transfer to receiver2 response: status=%d, result=%v", resp.StatusCode, result)
+		t.Logf("Transfer to receiver2 status: %d", resp.StatusCode)
 	}()
 
 	wg.Wait()
-	close(errChan)
-	close(resultChan)
-
 	time.Sleep(500 * time.Millisecond)
 
-	finalSenderWallet := app.getWallet(t, senderToken)
-	finalReceiver1Wallet := app.getWallet(t, receiver1Token)
-	finalReceiver2Wallet := app.getWallet(t, receiver2Token)
+	finalSenderBalance := app.getWalletBalance(t, senderToken)
+	finalReceiver1Balance := app.getWalletBalance(t, receiver1Token)
+	finalReceiver2Balance := app.getWalletBalance(t, receiver2Token)
 
-	senderBalance := int64(finalSenderWallet["balance"].(float64))
-	receiver1Balance := int64(finalReceiver1Wallet["balance"].(float64))
-	receiver2Balance := int64(finalReceiver2Wallet["balance"].(float64))
+	t.Logf("Final — Sender: %d, Receiver1: %d, Receiver2: %d",
+		finalSenderBalance, finalReceiver1Balance, finalReceiver2Balance)
 
-	t.Logf("Final - Sender: %d, Receiver1: %d, Receiver2: %d",
-		senderBalance, receiver1Balance, receiver2Balance)
-
-	totalOut := (20000 - senderBalance)
-	totalIn := (receiver1Balance - 5000) + (receiver2Balance - 5000)
-
-	t.Logf("Total deducted from sender: %d, Total credited to receivers: %d", totalOut, totalIn)
+	totalOut := 20000 - finalSenderBalance
+	totalIn := (finalReceiver1Balance - 5000) + (finalReceiver2Balance - 5000)
 
 	if totalOut != totalIn {
-		t.Errorf("ATOMICITY BUG: Money in (%d) != Money out (%d) - funds lost or created!", totalIn, totalOut)
+		t.Errorf("ATOMICITY BUG: money out (%d) != money in (%d)", totalOut, totalIn)
 	}
-
-	if senderBalance < 0 {
-		t.Errorf("ATOMICITY BUG: Sender balance is negative: %d", senderBalance)
+	if finalSenderBalance < 0 {
+		t.Errorf("ATOMICITY BUG: sender balance went negative: %d", finalSenderBalance)
 	}
 }
 
 func TestConcurrentTransfers_ExceedBalance_Integration(t *testing.T) {
-	if err := setupValidation(); err != nil {
+	if err := setup(); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
-	defer teardownValidation()
+	defer teardown()
 
 	app := testAppInstance
 
 	senderEmail := fmt.Sprintf("sender2-%s@example.com", uuid.New().String())
 	receiverEmail := fmt.Sprintf("receiver-%s@example.com", uuid.New().String())
 
-	senderToken, _ := app.registerUser(t, senderEmail, testUserPassword)
-	receiverToken, _ := app.registerUser(t, receiverEmail, testUserPassword)
+	senderToken := app.registerUser(t, senderEmail, testUserPassword)
+	receiverToken := app.registerUser(t, receiverEmail, testUserPassword)
 
-	app.topUp(t, senderToken, 5000)
-	app.topUp(t, receiverToken, 1000)
+	// Top up sender and confirm so the balance is funded.
+	senderTopUp, senderStatus, _ := app.topUpWithBody(t, senderToken, 5000)
+	if senderStatus != http.StatusOK {
+		t.Fatalf("sender topup failed with status %d", senderStatus)
+	}
+	if err := app.confirmPayment(senderTopUp["provider_payment_id"].(string)); err != nil {
+		t.Fatalf("confirm sender payment: %v", err)
+	}
+	if err := waitForWebhook(15*time.Second, func() bool {
+		return app.getWalletBalance(t, senderToken) >= 5000
+	}); err != nil {
+		t.Fatalf("sender top-up webhook did not arrive: %v", err)
+	}
 
-	senderWallet := app.getWallet(t, senderToken)
 	receiverWallet := app.getWallet(t, receiverToken)
+	receiverWalletID := receiverWallet["id"].(string)
 
-	_ = senderWallet["id"].(string)
+	initialSenderBalance := app.getWalletBalance(t, senderToken)
+	initialReceiverBalance := app.getWalletBalance(t, receiverToken)
+	t.Logf("Initial — Sender: %d, Receiver: %d", initialSenderBalance, initialReceiverBalance)
 
-	t.Logf("Initial - Sender: %v, Receiver: %v",
-		senderWallet["balance"], receiverWallet["balance"])
-
+	// Fire two concurrent transfers of 3000 each against a 5000 balance.
+	// At most one should succeed.
 	var wg sync.WaitGroup
-
 	wg.Add(2)
-	go func() {
+
+	doTransfer := func() {
 		defer wg.Done()
 		body, _ := json.Marshal(map[string]interface{}{
-			"to_wallet_id":       receiverWallet["id"].(string),
+			"to_wallet_id":       receiverWalletID,
 			"amount_in_piastres": 3000,
 		})
 		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
 		req.Header.Set("Authorization", "Bearer "+senderToken)
 		req.Header.Set("Content-Type", "application/json")
-
-		resp, _ := app.httpClient.Do(req)
-		if resp != nil {
-			defer resp.Body.Close()
-			t.Logf("Transfer 1 status: %d", resp.StatusCode)
+		resp, err := app.httpClient.Do(req)
+		if err != nil {
+			t.Logf("Transfer request error: %v", err)
+			return
 		}
-	}()
+		defer resp.Body.Close()
+		t.Logf("Transfer status: %d", resp.StatusCode)
+	}
 
-	go func() {
-		defer wg.Done()
-		body, _ := json.Marshal(map[string]interface{}{
-			"to_wallet_id":       receiverWallet["id"].(string),
-			"amount_in_piastres": 3000,
-		})
-		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
-		req.Header.Set("Authorization", "Bearer "+senderToken)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, _ := app.httpClient.Do(req)
-		if resp != nil {
-			defer resp.Body.Close()
-			t.Logf("Transfer 2 status: %d", resp.StatusCode)
-		}
-	}()
-
+	go doTransfer()
+	go doTransfer()
 	wg.Wait()
 
 	time.Sleep(500 * time.Millisecond)
 
-	finalSenderWallet := app.getWallet(t, senderToken)
-	finalReceiverWallet := app.getWallet(t, receiverToken)
+	finalSenderBalance := app.getWalletBalance(t, senderToken)
+	finalReceiverBalance := app.getWalletBalance(t, receiverToken)
 
-	senderBalance := int64(finalSenderWallet["balance"].(float64))
-	receiverBalance := int64(finalReceiverWallet["balance"].(float64))
+	t.Logf("Final — Sender: %d, Receiver: %d", finalSenderBalance, finalReceiverBalance)
 
-	t.Logf("Final - Sender: %d, Receiver: %d", senderBalance, receiverBalance)
-
-	if senderBalance < 0 {
-		t.Errorf("RACE CONDITION: Sender balance went negative (%d) - double spending detected!", senderBalance)
+	if finalSenderBalance < 0 {
+		t.Errorf("RACE CONDITION: sender balance went negative (%d)", finalSenderBalance)
 	}
 
-	if receiverBalance > 7000 {
-		t.Errorf("RACE CONDITION: Receiver got too much money (%d) - expected max 7000", receiverBalance)
+	maxExpectedReceiver := initialReceiverBalance + initialSenderBalance
+	if finalReceiverBalance > maxExpectedReceiver {
+		t.Errorf("RACE CONDITION: receiver got more than sender had (%d > %d)", finalReceiverBalance, maxExpectedReceiver)
+	}
+
+	totalOut := initialSenderBalance - finalSenderBalance
+	totalIn := finalReceiverBalance - initialReceiverBalance
+	if totalOut != totalIn {
+		t.Errorf("ATOMICITY BUG: money out (%d) != money in (%d)", totalOut, totalIn)
 	}
 }

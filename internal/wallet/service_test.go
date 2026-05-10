@@ -219,6 +219,14 @@ func (m *MockTransactionsSvc) UpdateStatus(
 	return args.Error(0)
 }
 
+func (m *MockTransactionsSvc) GetByWalletId(
+	ctx context.Context,
+	walletID uuid.UUID,
+) (transactions.GetByWalletIdResponse, error) {
+	args := m.Called(ctx, walletID)
+	return args.Get(0).(transactions.GetByWalletIdResponse), args.Error(1)
+}
+
 type MockPaymentSvc struct {
 	mock.Mock
 }
@@ -374,8 +382,7 @@ func TestTopUp(t *testing.T) {
 			}
 
 			resp, err := svc.TopUp(ctx, TopUpRequest{
-				Amount:      tt.amount,
-				Description: "test topup",
+				Amount: tt.amount,
 			})
 
 			if tt.expectedErr != nil {
@@ -565,7 +572,10 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		resp, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 2000})
+		resp, err := svc.DeductFromBalance(
+			context.Background(),
+			DeductRequest{WalletID: walletID, Amount: 2000},
+		)
 
 		assert.NoError(t, err)
 		assert.Equal(t, walletID, resp.ID)
@@ -585,7 +595,10 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 2000})
+		_, err := svc.DeductFromBalance(
+			context.Background(),
+			DeductRequest{WalletID: walletID, Amount: 2000},
+		)
 
 		assert.ErrorIs(t, err, ErrInsufficientFunds)
 		mockRepo.AssertExpectations(t)
@@ -599,7 +612,10 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 1000})
+		_, err := svc.DeductFromBalance(
+			context.Background(),
+			DeductRequest{WalletID: walletID, Amount: 1000},
+		)
 
 		assert.ErrorIs(t, err, ErrWalletNotFound)
 		mockRepo.AssertExpectations(t)
@@ -619,10 +635,129 @@ func TestDeductFromBalance(t *testing.T) {
 		svc := &Service{
 			repo: mockRepo,
 		}
-		_, err := svc.DeductFromBalance(context.Background(), DeductRequest{WalletID: walletID, Amount: 1000})
+		_, err := svc.DeductFromBalance(
+			context.Background(),
+			DeductRequest{WalletID: walletID, Amount: 1000},
+		)
 
 		assert.Error(t, err)
 		mockRepo.AssertExpectations(t)
+	})
+}
+
+func TestGetPayments(t *testing.T) {
+	userID := uuid.New()
+	walletID := uuid.New()
+	now := time.Now()
+
+	wallet := repo.Wallet{
+		ID:        pgtype.UUID{Bytes: walletID, Valid: true},
+		UserID:    pgtype.UUID{Bytes: userID, Valid: true},
+		Balance:   5000,
+		CreatedAt: pgtype.Timestamptz{Time: now, Valid: true},
+		UpdatedAt: pgtype.Timestamptz{Time: now, Valid: true},
+	}
+
+	creditTx := transactions.GetTransactionResponse{
+		ID:        uuid.New(),
+		WalletID:  walletID,
+		Amount:    2000,
+		Type:      repo.TransactionTypeCredit,
+		Status:    repo.TransactionStatusCompleted,
+		CreatedAt: now,
+	}
+	debitTx := transactions.GetTransactionResponse{
+		ID:        uuid.New(),
+		WalletID:  walletID,
+		Amount:    500,
+		Type:      repo.TransactionTypeDebit,
+		Status:    repo.TransactionStatusCompleted,
+		CreatedAt: now,
+	}
+
+	t.Run("returns_only_credit_transactions", func(t *testing.T) {
+		ctx := withUserID(context.Background(), userID.String())
+		mockRepo := new(MockwalletRepo)
+		mockTxSvc := new(MockTransactionsSvc)
+
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(wallet, nil)
+		mockTxSvc.On("GetByWalletId", mock.Anything, walletID).
+			Return(transactions.GetByWalletIdResponse{creditTx, debitTx}, nil)
+
+		svc := &Service{repo: mockRepo, transactionsSvc: mockTxSvc}
+		resp, err := svc.GetPayments(ctx)
+
+		assert.NoError(t, err)
+		assert.Len(t, resp, 1)
+		assert.Equal(t, string(repo.TransactionTypeCredit), resp[0].Type)
+		assert.Equal(t, creditTx.Amount, resp[0].Amount)
+		mockRepo.AssertExpectations(t)
+		mockTxSvc.AssertExpectations(t)
+	})
+
+	t.Run("no_credit_transactions_returns_empty", func(t *testing.T) {
+		ctx := withUserID(context.Background(), userID.String())
+		mockRepo := new(MockwalletRepo)
+		mockTxSvc := new(MockTransactionsSvc)
+
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(wallet, nil)
+		mockTxSvc.On("GetByWalletId", mock.Anything, walletID).
+			Return(transactions.GetByWalletIdResponse{debitTx}, nil)
+
+		svc := &Service{repo: mockRepo, transactionsSvc: mockTxSvc}
+		resp, err := svc.GetPayments(ctx)
+
+		assert.NoError(t, err)
+		assert.Empty(t, resp)
+		mockRepo.AssertExpectations(t)
+		mockTxSvc.AssertExpectations(t)
+	})
+
+	t.Run("wallet_not_found", func(t *testing.T) {
+		ctx := withUserID(context.Background(), userID.String())
+		mockRepo := new(MockwalletRepo)
+		mockTxSvc := new(MockTransactionsSvc)
+
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).
+			Return(repo.Wallet{}, pgx.ErrNoRows)
+
+		svc := &Service{repo: mockRepo, transactionsSvc: mockTxSvc}
+		_, err := svc.GetPayments(ctx)
+
+		assert.ErrorIs(t, err, ErrWalletNotFound)
+		mockRepo.AssertExpectations(t)
+		mockTxSvc.AssertExpectations(t)
+	})
+
+	t.Run("transactions_service_error", func(t *testing.T) {
+		ctx := withUserID(context.Background(), userID.String())
+		mockRepo := new(MockwalletRepo)
+		mockTxSvc := new(MockTransactionsSvc)
+
+		mockRepo.On("GetWalletByUserId", mock.Anything, mock.Anything).Return(wallet, nil)
+		mockTxSvc.On("GetByWalletId", mock.Anything, walletID).
+			Return(transactions.GetByWalletIdResponse{}, errors.New("db error"))
+
+		svc := &Service{repo: mockRepo, transactionsSvc: mockTxSvc}
+		_, err := svc.GetPayments(ctx)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "db error")
+		mockRepo.AssertExpectations(t)
+		mockTxSvc.AssertExpectations(t)
+	})
+
+	t.Run("no_user_id_in_context", func(t *testing.T) {
+		ctx := context.Background()
+		mockRepo := new(MockwalletRepo)
+		mockTxSvc := new(MockTransactionsSvc)
+
+		svc := &Service{repo: mockRepo, transactionsSvc: mockTxSvc}
+		_, err := svc.GetPayments(ctx)
+
+		assert.Error(t, err)
+		mockRepo.AssertExpectations(t)
+		mockTxSvc.AssertExpectations(t)
 	})
 }
 

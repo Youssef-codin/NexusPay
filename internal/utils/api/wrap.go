@@ -6,6 +6,8 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type ResponseBuffer struct {
@@ -38,7 +40,13 @@ func Wrap(f func(w http.ResponseWriter, req *http.Request) error) http.HandlerFu
 			if !errors.As(err, &coded) {
 				coded = WrappedError(http.StatusInternalServerError, "un-coded error: %w", err).(CodedError)
 			}
-			slog.Error("login failed", "error", err)
+			slog.Error("request failed",
+				"request_id", middleware.GetReqID(req.Context()),
+				"method", req.Method,
+				"path", req.URL.Path,
+				"status", coded.Code,
+				"error", err,
+			)
 			Error(w, coded.Err.Error(), coded.Code)
 			return
 		}

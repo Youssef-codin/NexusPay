@@ -22,6 +22,7 @@ var (
 
 type IService interface {
 	GetById(ctx context.Context, req GetByIdRequest) (GetTransactionResponse, error)
+	GetByWalletId(ctx context.Context, walletID uuid.UUID) (GetByWalletIdResponse, error)
 	CreateTransaction(
 		ctx context.Context,
 		req CreateTransactionRequest,
@@ -80,6 +81,44 @@ func (svc *Service) GetById(
 		DeletedAt:   &transaction.DeletedAt.Time,
 		Description: transaction.Description.String,
 	}, nil
+}
+
+func (svc *Service) GetByWalletId(
+	ctx context.Context,
+	walletID uuid.UUID,
+) (GetByWalletIdResponse, error) {
+	transactions, err := svc.repo.GetTransactionsByWalletId(ctx, pgtype.UUID{
+		Bytes: walletID,
+		Valid: true,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(GetByWalletIdResponse, 0, len(transactions))
+	for _, t := range transactions {
+		var transferID *uuid.UUID
+		if t.TransferID.Valid {
+			id := uuid.UUID(t.TransferID.Bytes)
+			transferID = &id
+		}
+
+		result = append(result, GetTransactionResponse{
+			ID:          uuid.UUID(t.ID.Bytes),
+			WalletID:    uuid.UUID(t.WalletID.Bytes),
+			Amount:      t.Amount,
+			Type:        t.Type,
+			Status:      t.Status,
+			TransferID:  transferID,
+			CreatedAt:   t.CreatedAt.Time,
+			UpdatedAt:   t.UpdatedAt.Time,
+			DeletedAt:   &t.DeletedAt.Time,
+			Description: t.Description.String,
+		})
+	}
+
+	return result, nil
 }
 
 func (svc *Service) CreateTransaction(

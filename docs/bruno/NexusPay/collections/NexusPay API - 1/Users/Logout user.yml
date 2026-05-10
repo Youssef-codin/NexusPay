@@ -25,13 +25,16 @@ settings:
 
 examples:
   - name: 204 Response
-    description: Logout successful
+    description: Logout successful. Refresh token cookie is cleared.
     request:
       url: "{{baseUrl}}/users/logout"
       method: POST
     response:
       status: 204
       statusText: No Content
+      headers:
+        - name: Set-Cookie
+          value: refresh_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
   - name: 401 Response
     description: Unauthorized - missing or invalid token
     request:
@@ -59,8 +62,8 @@ examples:
       status: 204
       statusText: No Content
       headers:
-        - name: content-type
-          value: application/json
+        - name: set-cookie
+          value: refresh_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
         - name: vary
           value: Origin
         - name: x-ratelimit-limit

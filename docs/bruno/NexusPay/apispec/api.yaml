@@ -13,7 +13,14 @@ paths:
         - Authentication
       responses:
         '200':
-          description: OK
+          description: OK. Refresh token is set as an HTTP-only cookie.
+          headers:
+            Set-Cookie:
+              description: >-
+                refresh_token=<token>; Path=/; HttpOnly; SameSite=Lax.
+                Expires after 7 days.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -25,15 +32,12 @@ paths:
                     type: string
                   jwt_token:
                     type: string
-                  refresh_token:
-                    type: string
               examples:
                 200_Response:
                   value:
                     email: john.doe@example.com
                     full_name: John Doe
                     jwt_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                    refresh_token: dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4...
                   summary: 200 Response
                   description: Login successful
                 example:
@@ -42,8 +46,6 @@ paths:
                     full_name: Youssef Hany
                     jwt_token: >-
                       eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzgxMTM5MTAsImlhdCI6MTc3ODExMzAxMCwic3ViIjoiNzYzNzQ2ZjgtY2EyOC00OWE2LTkyZjUtMjhlN2YwOWVhMTFjIn0.hF2HnlJMflAosc4TN9lOwMvXyYZW0maM52mX_lqwj6c
-                    refresh_token: >-
-                      79bbfb367e6bdb646cbd63a4d67058ac4de02ad35612c54bdc56144c97e8f167
                   summary: example
         '401':
           description: Unauthorized
@@ -121,7 +123,14 @@ paths:
         - Authentication
       responses:
         '200':
-          description: OK
+          description: OK. Rotated refresh token is set as a new HTTP-only cookie.
+          headers:
+            Set-Cookie:
+              description: >-
+                refresh_token=<new_token>; Path=/; HttpOnly; SameSite=Lax.
+                Expires after 7 days.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -129,20 +138,16 @@ paths:
                 properties:
                   jwt_token:
                     type: string
-                  refresh_token:
-                    type: string
               examples:
                 200_Response:
                   value:
                     jwt_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                    refresh_token: bmV3IHJlZnJlc2ggdG9rZW4...
                   summary: 200 Response
                   description: Token refreshed successfully
                 example:
                   value:
                     jwt_token: >-
                       eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzgxMTM5MTAsImlhdCI6MTc3ODExMzAxMCwic3ViIjoiNzYzNzQ2ZjgtY2EyOC00OWE2LTkyZjUtMjhlN2YwOWVhMTFjIn0.hF2HnlJMflAosc4TN9lOwMvXyYZW0maM52mX_lqwj6c
-                    refresh_token: new_refresh_token_placeholder
                   summary: example
         '404':
           description: Not Found
@@ -161,8 +166,6 @@ paths:
                 error: User not found
                 message: Invalid or expired refresh token
                 status_code: 404
-      requestBody:
-        $ref: '#/components/requestBodies/refresh_access_token'
   /auth/register:
     post:
       summary: Register a new user
@@ -781,6 +784,9 @@ paths:
                         executed_at:
                           type: string
                           nullable: true
+                        deleted_at:
+                          type: string
+                          nullable: true
                         created_at:
                           type: string
               examples:
@@ -791,6 +797,7 @@ paths:
                         transfer_id: 123e4567-e89b-12d3-a456-426614174002
                         scheduled_at: '2024-01-20T10:00:00Z'
                         executed_at: null
+                        deleted_at: null
                         created_at: '2024-01-15T10:30:00Z'
                   summary: 200 Response
                   description: Scheduled transfers retrieved successfully
@@ -801,6 +808,7 @@ paths:
                         transfer_id: 223e4567-e89b-12d3-a456-426614174002
                         scheduled_at: '2024-01-20T10:00:00Z'
                         executed_at: null
+                        deleted_at: null
                         created_at: '2024-01-15T10:30:00Z'
                   summary: example
         '401':
@@ -1001,9 +1009,99 @@ paths:
           example: John
       security:
         - search_users: []
-  /wallet/:
+  /wallet/payments:
     get:
-      summary: Get wallet
+      summary: Get payment history
+      operationId: >-
+        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_wallet_get_payments_yml
+      description: ''
+      tags:
+        - Wallet
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    amount:
+                      type: integer
+                    type:
+                      type: string
+                    direction:
+                      type: string
+                    status:
+                      type: string
+                    description:
+                      type: string
+                    created_at:
+                      type: string
+              examples:
+                200_Response:
+                  value:
+                    - id: 123e4567-e89b-12d3-a456-426614174001
+                      amount: 5000
+                      type: credit
+                      direction: incoming
+                      status: completed
+                      description: Wallet top-up via Stripe
+                      created_at: '2024-01-15T10:30:00Z'
+                  summary: 200 Response
+                  description: Payment history retrieved successfully
+                example:
+                  value:
+                    - id: 123e4567-e89b-12d3-a456-426614174001
+                      amount: 5000
+                      type: debit
+                      direction: outgoing
+                      status: completed
+                      description: Wallet top-up via Stripe
+                      created_at: '2024-01-15T10:30:00Z'
+                  summary: example
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  status_code:
+                    type: integer
+              example:
+                error: unauthorized
+                message: Missing or invalid authorization token
+                status_code: 401
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  status_code:
+                    type: integer
+              example:
+                error: not found
+                message: Wallet for this user was not found
+                status_code: 404
+      security:
+        - get_payments: []
+  /wallet/{userId}:
+    get:
+      summary: Get wallet by user ID
       operationId: >-
         home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_wallet_get_wallet_yml
       description: ''
@@ -1081,8 +1179,13 @@ paths:
                 error: not found
                 message: Wallet for this user was not found
                 status_code: 404
-      requestBody:
-        $ref: '#/components/requestBodies/get_wallet'
+      parameters:
+        - name: userId
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
       security:
         - get_wallet: []
     patch:
@@ -1232,13 +1335,6 @@ components:
       example:
         email: youssef@gmail.com
         password: passwrd
-    refresh_access_token:
-      type: object
-      properties:
-        refresh_token:
-          type: string
-      example:
-        refresh_token: 8dc954202a3dd5ef04432c9e5e636cd8cf9059fd6a50d31d2bf9c633930f9a8a
     register_a_new_user:
       type: object
       properties:
@@ -1265,23 +1361,13 @@ components:
         to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
         amount_in_piastres: 5000
         note: Dinner split
-    get_wallet:
-      type: object
-      required:
-        - user_id
-      properties:
-        user_id:
-          type: string
-          format: uuid
-      example:
-        user_id: 123e4567-e89b-12d3-a456-426614174000
     top_up_wallet:
       type: object
       properties:
-        amount:
+        amount_in_piastres:
           type: integer
       example:
-        amount: 5000
+        amount_in_piastres: 5000
     stripe_webhook:
       type: object
       properties:
@@ -1320,13 +1406,6 @@ components:
             $ref: '#/components/schemas/login_user'
       description: ''
       required: true
-    refresh_access_token:
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/refresh_access_token'
-      description: ''
-      required: true
     register_a_new_user:
       content:
         application/json:
@@ -1339,13 +1418,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/create_transfer'
-      description: ''
-      required: true
-    get_wallet:
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/get_wallet'
       description: ''
       required: true
     top_up_wallet:
@@ -1385,6 +1457,9 @@ components:
       type: http
       scheme: bearer
     search_users:
+      type: http
+      scheme: bearer
+    get_payments:
       type: http
       scheme: bearer
     get_wallet:

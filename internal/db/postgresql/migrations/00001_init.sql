@@ -63,7 +63,8 @@ CREATE TABLE scheduled_transfers (
     transfer_id  UUID NOT NULL UNIQUE REFERENCES transfers(id),
     scheduled_at TIMESTAMPTZ NOT NULL,
     executed_at  TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at   TIMESTAMPTZ
 );
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 

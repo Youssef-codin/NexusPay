@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type handler struct {
@@ -18,12 +20,27 @@ func NewHandler(service IService) *handler {
 }
 
 func (h *handler) GetByUserId(w http.ResponseWriter, req *http.Request) error {
-	var dto GetWalletByUserIdRequest
-	if err := api.Read(req, &dto); err != nil {
-		return api.WrappedError(http.StatusBadRequest, "Bad Request")
+	userIDStr := chi.URLParam(req, "userId")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return api.WrappedError(http.StatusBadRequest, "Invalid user ID")
 	}
 
-	res, err := h.svc.GetByUserId(req.Context(), dto.UserID)
+	res, err := h.svc.GetByUserId(req.Context(), userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrWalletNotFound):
+			return api.WrappedError(http.StatusNotFound, "Wallet for this user was not found")
+		default:
+			return err
+		}
+	}
+	api.Respond(w, res, http.StatusOK)
+	return nil
+}
+
+func (h *handler) GetPayments(w http.ResponseWriter, req *http.Request) error {
+	res, err := h.svc.GetPayments(req.Context())
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrWalletNotFound):

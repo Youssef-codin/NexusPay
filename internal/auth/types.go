@@ -10,14 +10,14 @@ type registerResponse struct {
 	Email        string `json:"email"`
 	FullName     string `json:"full_name"`
 	JwtToken     string `json:"jwt_token"`
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"-"`
 }
 
 type loginResponse struct {
 	Email        string `json:"email"`
 	FullName     string `json:"full_name"`
 	JwtToken     string `json:"jwt_token"`
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"-"`
 }
 
 type loginRequest struct {
@@ -26,10 +26,10 @@ type loginRequest struct {
 }
 
 type refreshRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
+	RefreshToken string
 }
 
 type refreshResponse struct {
 	JwtToken     string `json:"jwt_token"`
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"-"`
 }

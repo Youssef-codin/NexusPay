@@ -46,3 +46,9 @@ type UpdateTransactionRequest struct {
 	ID     uuid.UUID              `json:"id"`
 	Status repo.TransactionStatus `json:"transaction_status" validate:"transaction_status"`
 }
+
+type GetByWalletIdRequest struct {
+	WalletID uuid.UUID `json:"wallet_id" validate:"required,uuid"`
+}
+
+type GetByWalletIdResponse []GetTransactionResponse

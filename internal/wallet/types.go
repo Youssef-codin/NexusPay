@@ -20,13 +20,12 @@ type CreateWalletRequest struct {
 }
 
 type TopUpRequest struct {
-	Amount      int64  `json:"amount_in_piastres" validate:"min=1000"`
-	Description string `json:"description"`
+	Amount int64 `json:"amount_in_piastres" validate:"min=1000"`
 }
 
 type DeductRequest struct {
-	WalletID uuid.UUID `json:"wallet_id" validate:"required,uuid"`
-	Amount   int64     `json:"amount_in_piastres" validate:"min=1"`
+	WalletID uuid.UUID `json:"wallet_id"          validate:"required,uuid"`
+	Amount   int64     `json:"amount_in_piastres" validate:"min=1000"`
 }
 
 type AddToWalletRequest struct {
@@ -72,3 +71,14 @@ type DeductResponse struct {
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type PaymentHistoryItem struct {
+	ID          uuid.UUID `json:"id"`
+	Amount      int64     `json:"amount"`
+	Type        string    `json:"type"`
+	Status      string    `json:"status"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type GetPaymentsResponse []PaymentHistoryItem

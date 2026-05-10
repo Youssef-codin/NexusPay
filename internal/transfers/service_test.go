@@ -302,6 +302,11 @@ func (m *MockWalletSvc) AddToWallet(ctx context.Context, req wallet.AddToWalletR
 	return args.Get(0).(wallet.AddToWalletResponse), args.Error(1)
 }
 
+func (m *MockWalletSvc) GetPayments(ctx context.Context) (wallet.GetPaymentsResponse, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(wallet.GetPaymentsResponse), args.Error(1)
+}
+
 type MockTransactionsSvc struct {
 	mock.Mock
 }
@@ -319,6 +324,11 @@ func (m *MockTransactionsSvc) CreateTransaction(ctx context.Context, req transac
 func (m *MockTransactionsSvc) UpdateStatus(ctx context.Context, req transactions.UpdateTransactionRequest) error {
 	args := m.Called(ctx, req)
 	return args.Error(0)
+}
+
+func (m *MockTransactionsSvc) GetByWalletId(ctx context.Context, walletID uuid.UUID) (transactions.GetByWalletIdResponse, error) {
+	args := m.Called(ctx, walletID)
+	return args.Get(0).(transactions.GetByWalletIdResponse), args.Error(1)
 }
 
 func TestCreateTransfer_Validation(t *testing.T) {

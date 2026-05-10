@@ -12,7 +12,7 @@ http:
     type: json
     data: |-
       {
-        "amount": 5000
+        "amount_in_piastres": 5000
       }
   auth:
     type: bearer
@@ -37,7 +37,7 @@ examples:
         type: json
         data: |-
           {
-            "amount": 5000
+            "amount_in_piastres": 5000
           }
     response:
       status: 200
@@ -50,7 +50,7 @@ examples:
         data: |-
           {
             "client_secret": "pi_test123_secret_abc",
-            "amount": 5000,
+            "amount_in_piastres": 5000,
             "currency": "usd"
           }
   - name: 400 Response
