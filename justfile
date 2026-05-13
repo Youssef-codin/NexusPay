@@ -16,7 +16,7 @@ stripe:
 
 [group('build')]
 build:
-    go build -o bin/app ./...
+    go build -o bin/app ./cmd
 
 # ── Test ───────────────────────────────────────────────────────────────────────
 

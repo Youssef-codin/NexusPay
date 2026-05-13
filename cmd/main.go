@@ -8,14 +8,20 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/db"
 	"github.com/Youssef-codin/NexusPay/internal/utils/env"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 )
 
 func main() {
+	for _, f := range []string{".env", "../.env"} {
+		if godotenv.Load(f) == nil {
+			break
+		}
+	}
 	ctx := context.Background()
 
 	cfg := config{
-		addr:        ":3000",
+		addr:        ":" + env.GetEnvVar("PORT", "3000"),
 		frontendURL: env.GetEnvVar("FRONTEND_URL", "http://localhost:8000"),
 		db: dbConfig{
 			dsn: env.GetEnvVar(

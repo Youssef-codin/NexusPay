@@ -10,6 +10,7 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/utils/env"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -18,6 +19,11 @@ type dbConfig struct {
 }
 
 func main() {
+	for _, f := range []string{".env", "../.env"} {
+		if godotenv.Load(f) == nil {
+			break
+		}
+	}
 	ctx := context.Background()
 
 	cfg := dbConfig{

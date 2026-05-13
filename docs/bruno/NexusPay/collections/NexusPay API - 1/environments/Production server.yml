@@ -1,4 +1,6 @@
 name: Production server
 variables:
   - name: baseUrl
-    value: api.nexuspay.com
+    value: http://13.134.194.166:3000
+  - secret: true
+    name: token
