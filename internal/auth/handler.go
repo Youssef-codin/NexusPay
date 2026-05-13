@@ -28,8 +28,8 @@ func setRefreshCookie(w http.ResponseWriter, token string, maxAge int) {
 		Name:     refreshCookieName,
 		Value:    token,
 		HttpOnly: true,
-		Secure:   false, //NOTE: set to true in production behind HTTPS
-		SameSite: http.SameSiteLaxMode,
+		Secure:   true, //NOTE: set to true in production behind HTTPS
+		SameSite: http.SameSiteNoneMode,
 		Path:     "/",
 		MaxAge:   maxAge,
 	})
@@ -40,7 +40,7 @@ func clearRefreshCookie(w http.ResponseWriter) {
 		Name:     refreshCookieName,
 		Value:    "",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 		Path:     "/",
 		MaxAge:   -1,
 	})
