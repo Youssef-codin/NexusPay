@@ -1,6 +1,6 @@
 name: Production server
 variables:
   - name: baseUrl
-    value: http://13.134.194.166:3000
+    value: http://13.134.194.166:80
   - secret: true
     name: token
