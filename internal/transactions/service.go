@@ -190,7 +190,8 @@ func (svc *Service) UpdateStatus(
 	case repo.TransactionStatusPending:
 		if to != repo.TransactionStatusProcessing &&
 			to != repo.TransactionStatusReversed &&
-			to != repo.TransactionStatusFailed {
+			to != repo.TransactionStatusFailed &&
+			to != repo.TransactionStatusCancelled {
 			return errInvalidTransition(from, to)
 		}
 	case repo.TransactionStatusProcessing:

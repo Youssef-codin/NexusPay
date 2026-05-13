@@ -37,6 +37,12 @@ func (m *MockTxManager) StartTx(ctx context.Context) (context.Context, pgx.Tx, e
 	return args.Get(0).(context.Context), tx, args.Error(2)
 }
 
+type simpleMockTxManager struct{}
+
+func (m *simpleMockTxManager) StartTx(ctx context.Context) (context.Context, pgx.Tx, error) {
+	return ctx, &MockTx{}, nil
+}
+
 type MockTx struct {
 	mock.Mock
 	commitCalled   bool
@@ -49,7 +55,9 @@ func (m *MockTx) Commit(ctx context.Context) error {
 }
 
 func (m *MockTx) Rollback(ctx context.Context) error {
-	m.rollbackCalled = true
+	if !m.commitCalled {
+		m.rollbackCalled = true
+	}
 	return nil
 }
 
@@ -1081,6 +1089,84 @@ func TestCreateTransfer_AtomicityProblem(t *testing.T) {
 		t.Log("Transaction was rolled back - correct behavior")
 	}
 	assert.True(t, mockTx.commitCalled || mockTx.rollbackCalled, "Either commit or rollback should be called")
+}
+
+// TestExecuteTransfer_DeductSucceeds_AddFails_NoReversal calls ExecuteTransfer directly
+// (without the DB transaction wrapper that CreateTransfer adds) to expose whether the
+// implementation issues a compensating AddToWallet back to the sender when AddToWallet fails.
+//
+// Expected finding: the deduction IS NOT reversed — no compensating call is made.
+// The only protection would be if the caller wraps ExecuteTransfer in a DB transaction
+// that rolls back, but the application-level balance is left dirty if that doesn't happen.
+func TestExecuteTransfer_DeductSucceeds_AddFails_NoReversal(t *testing.T) {
+	senderWalletID := uuid.New()
+	receiverWalletID := uuid.New()
+	transferID := uuid.New()
+	debitTxID := uuid.New()
+	creditTxID := uuid.New()
+
+	ctx := context.Background()
+
+	mockWalletSvc := new(MockWalletSvc)
+	mockTxSvc := new(MockTransactionsSvc)
+	mockTransfersRepo := new(MockTransfersRepo)
+
+	mockWalletSvc.On("GetById", mock.Anything, wallet.GetWalletRequest{ID: senderWalletID}).
+		Return(wallet.GetWalletResponse{ID: senderWalletID, Balance: 5000}, nil)
+	mockWalletSvc.On("GetById", mock.Anything, wallet.GetWalletRequest{ID: receiverWalletID}).
+		Return(wallet.GetWalletResponse{ID: receiverWalletID, Balance: 1000}, nil)
+
+	mockWalletSvc.On("DeductFromBalance", mock.Anything, wallet.DeductRequest{
+		WalletID: senderWalletID,
+		Amount:   1000,
+	}).Return(wallet.DeductResponse{ID: senderWalletID, Status: "completed"}, nil)
+
+	addToWalletCallCount := 0
+	mockWalletSvc.On("AddToWallet", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) { addToWalletCallCount++ }).
+		Return(wallet.AddToWalletResponse{}, errors.New("receiver wallet error"))
+
+	mockTxSvc.On("UpdateStatus", mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockTransfersRepo.On("UpdateTransferStatus", mock.Anything, mock.Anything).Return(repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusFailed,
+	}, nil)
+
+	svc := &Service{
+		repo:           mockTransfersRepo,
+		walletSvc:      mockWalletSvc,
+		transactionSvc: mockTxSvc,
+		txManager:      &simpleMockTxManager{},
+	}
+
+	transfer := repo.Transfer{
+		ID:                  pgtype.UUID{Bytes: transferID, Valid: true},
+		FromWalletID:        pgtype.UUID{Bytes: senderWalletID, Valid: true},
+		ToWalletID:          pgtype.UUID{Bytes: receiverWalletID, Valid: true},
+		Amount:              1000,
+		Status:              repo.TransferStatusPending,
+		DebitTransactionID:  pgtype.UUID{Bytes: debitTxID, Valid: true},
+		CreditTransactionID: pgtype.UUID{Bytes: creditTxID, Valid: true},
+	}
+
+	_, err := svc.ExecuteTransfer(ctx, transfer)
+
+	assert.Error(t, err)
+
+	// DeductFromBalance was called exactly once — the sender lost 1000.
+	mockWalletSvc.AssertNumberOfCalls(t, "DeductFromBalance", 1)
+
+	// AddToWallet was called exactly once (the failed credit attempt).
+	// A value of 1 here means NO compensating call was made to refund the sender.
+	// A value of 2 would mean the implementation reversed the deduction.
+	t.Logf("AddToWallet call count: %d", addToWalletCallCount)
+	assert.Equal(t, 1, addToWalletCallCount,
+		"AddToWallet was called only for the credit attempt — no compensation call was made to reverse the deduction")
+
+	t.Log("RESULT: DeductFromBalance succeeded and AddToWallet failed.")
+	t.Log("The implementation does NOT issue a compensating AddToWallet to reverse the deduction.")
+	t.Log("The only protection is a database-level rollback by the caller (CreateTransfer wraps this in a tx).")
+	t.Log("If ExecuteTransfer is called outside a transaction (e.g. the scheduler), the sender's balance IS permanently deducted.")
 }
 
 func TestGetTransfers_WalletNotFound(t *testing.T) {

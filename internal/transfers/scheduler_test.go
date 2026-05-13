@@ -257,6 +257,7 @@ func TestProcessScheduledTransfers_ExecuteFails(t *testing.T) {
 	mockTransfersRepo.On("GetTransferById", mock.Anything, mock.Anything).Return(transfer, nil)
 	mockTxManager.On("StartTx", mock.Anything).Return(context.Background(), mockTx, nil)
 	mockTransfersSvc.On("ExecuteTransfer", mock.Anything, mock.Anything).Return(repo.Transfer{}, errors.New("insufficient funds"))
+	mockTransfersRepo.On("MarkScheduledTransferExecuted", mock.Anything, mock.Anything).Return(repo.ScheduledTransfer{}, nil)
 
 	svc := &Scheduler{
 		transfersRepo: mockTransfersRepo,
@@ -357,6 +358,233 @@ func TestProcessScheduledTransfers_HappyPath(t *testing.T) {
 	mockTransfersRepo.AssertExpectations(t)
 	mockTransfersSvc.AssertExpectations(t)
 }
+
+func TestProcessOneTransfer_HappyPath(t *testing.T) {
+	mockTransfersRepo := new(MockTransfersRepo)
+	mockTransfersSvc := new(MockTransfersSvc)
+
+	scheduledTransferID := uuid.New()
+	transferID := uuid.New()
+
+	scheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: scheduledTransferID, Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+		ExecutedAt: pgtype.Timestamptz{Valid: false},
+	}
+
+	pendingTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusPending,
+	}
+
+	completedTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusCompleted,
+	}
+
+	executedScheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: scheduledTransferID, Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+		ExecutedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+
+	mockTransfersRepo.On("GetTransferById", mock.Anything, scheduledTransfer.TransferID).Return(pendingTransfer, nil)
+	mockTransfersSvc.On("ExecuteTransfer", mock.Anything, pendingTransfer).Return(completedTransfer, nil)
+	mockTransfersRepo.On("MarkScheduledTransferExecuted", mock.Anything, scheduledTransfer.ID).Return(executedScheduledTransfer, nil)
+
+	svc := &Scheduler{
+		transfersRepo: mockTransfersRepo,
+		transfersSvc:  mockTransfersSvc,
+	}
+
+	err := svc.processOneTransfer(context.Background(), scheduledTransfer)
+
+	assert.NoError(t, err)
+	mockTransfersRepo.AssertExpectations(t)
+	mockTransfersSvc.AssertExpectations(t)
+}
+
+func TestProcessOneTransfer_GetTransferFails(t *testing.T) {
+	mockTransfersRepo := new(MockTransfersRepo)
+	mockTransfersSvc := new(MockTransfersSvc)
+	mockTxManager := new(MockSchedulerTxManager)
+
+	scheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: uuid.New(), Valid: true},
+		TransferID: pgtype.UUID{Bytes: uuid.New(), Valid: true},
+	}
+
+	mockTransfersRepo.On("GetTransferById", mock.Anything, scheduledTransfer.TransferID).Return(repo.Transfer{}, errors.New("db error"))
+
+	svc := &Scheduler{
+		transfersRepo: mockTransfersRepo,
+		transfersSvc:  mockTransfersSvc,
+		txManager:     mockTxManager,
+	}
+
+	err := svc.processOneTransfer(context.Background(), scheduledTransfer)
+
+	assert.Error(t, err)
+	mockTransfersRepo.AssertExpectations(t)
+}
+
+func TestProcessOneTransfer_TransferNotPending(t *testing.T) {
+	mockTransfersRepo := new(MockTransfersRepo)
+	mockTransfersSvc := new(MockTransfersSvc)
+	mockTxManager := new(MockSchedulerTxManager)
+
+	transferID := uuid.New()
+	scheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: uuid.New(), Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+	}
+
+	completedTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusCompleted,
+	}
+
+	mockTransfersRepo.On("GetTransferById", mock.Anything, scheduledTransfer.TransferID).Return(completedTransfer, nil)
+
+	svc := &Scheduler{
+		transfersRepo: mockTransfersRepo,
+		transfersSvc:  mockTransfersSvc,
+		txManager:     mockTxManager,
+	}
+
+	err := svc.processOneTransfer(context.Background(), scheduledTransfer)
+
+	assert.NoError(t, err)
+	mockTransfersRepo.AssertExpectations(t)
+	mockTransfersSvc.AssertNotCalled(t, "ExecuteTransfer")
+}
+
+func TestProcessOneTransfer_ExecuteFails_PersistsFailureState(t *testing.T) {
+	mockTransfersRepo := new(MockTransfersRepo)
+	mockTransfersSvc := new(MockTransfersSvc)
+	mockTxManager := new(MockSchedulerTxManager)
+
+	scheduledTransferID := uuid.New()
+	transferID := uuid.New()
+
+	scheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: scheduledTransferID, Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+	}
+
+	pendingTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusPending,
+	}
+
+	failedTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusFailed,
+	}
+
+	executedScheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: scheduledTransferID, Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+		ExecutedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+
+	mockTransfersRepo.On("GetTransferById", mock.Anything, scheduledTransfer.TransferID).Return(pendingTransfer, nil)
+	mockTransfersSvc.On("ExecuteTransfer", mock.Anything, pendingTransfer).Return(failedTransfer, errors.New("insufficient funds"))
+	mockTransfersRepo.On("MarkScheduledTransferExecuted", mock.Anything, scheduledTransfer.ID).Return(executedScheduledTransfer, nil)
+
+	svc := &Scheduler{
+		transfersRepo: mockTransfersRepo,
+		transfersSvc:  mockTransfersSvc,
+		txManager:     mockTxManager,
+	}
+
+	err := svc.processOneTransfer(context.Background(), scheduledTransfer)
+
+	assert.Error(t, err)
+	assert.EqualError(t, err, "insufficient funds")
+	mockTransfersRepo.AssertCalled(t, "MarkScheduledTransferExecuted", mock.Anything, scheduledTransfer.ID)
+}
+
+func TestProcessOneTransfer_MarksScheduledTransferExecuted(t *testing.T) {
+	mockTransfersRepo := new(MockTransfersRepo)
+	mockTransfersSvc := new(MockTransfersSvc)
+
+	scheduledTransferID := uuid.New()
+	transferID := uuid.New()
+
+	scheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: scheduledTransferID, Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+	}
+
+	pendingTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusPending,
+	}
+
+	completedTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusCompleted,
+	}
+
+	executedScheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: scheduledTransferID, Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+		ExecutedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+
+	mockTransfersRepo.On("GetTransferById", mock.Anything, scheduledTransfer.TransferID).Return(pendingTransfer, nil)
+	mockTransfersSvc.On("ExecuteTransfer", mock.Anything, pendingTransfer).Return(completedTransfer, nil)
+	mockTransfersRepo.On("MarkScheduledTransferExecuted", mock.Anything, scheduledTransfer.ID).Return(executedScheduledTransfer, nil)
+
+	svc := &Scheduler{
+		transfersRepo: mockTransfersRepo,
+		transfersSvc:  mockTransfersSvc,
+	}
+
+	err := svc.processOneTransfer(context.Background(), scheduledTransfer)
+
+	assert.NoError(t, err)
+	mockTransfersRepo.AssertCalled(t, "MarkScheduledTransferExecuted", mock.Anything, scheduledTransfer.ID)
+}
+
+func TestProcessOneTransfer_MarkExecutedFails(t *testing.T) {
+	mockTransfersRepo := new(MockTransfersRepo)
+	mockTransfersSvc := new(MockTransfersSvc)
+
+	scheduledTransferID := uuid.New()
+	transferID := uuid.New()
+
+	scheduledTransfer := repo.ScheduledTransfer{
+		ID:         pgtype.UUID{Bytes: scheduledTransferID, Valid: true},
+		TransferID: pgtype.UUID{Bytes: transferID, Valid: true},
+	}
+
+	pendingTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusPending,
+	}
+
+	completedTransfer := repo.Transfer{
+		ID:     pgtype.UUID{Bytes: transferID, Valid: true},
+		Status: repo.TransferStatusCompleted,
+	}
+
+	mockTransfersRepo.On("GetTransferById", mock.Anything, scheduledTransfer.TransferID).Return(pendingTransfer, nil)
+	mockTransfersSvc.On("ExecuteTransfer", mock.Anything, pendingTransfer).Return(completedTransfer, nil)
+	mockTransfersRepo.On("MarkScheduledTransferExecuted", mock.Anything, scheduledTransfer.ID).Return(repo.ScheduledTransfer{}, errors.New("db error"))
+
+	svc := &Scheduler{
+		transfersRepo: mockTransfersRepo,
+		transfersSvc:  mockTransfersSvc,
+	}
+
+	err := svc.processOneTransfer(context.Background(), scheduledTransfer)
+
+	assert.Error(t, err)
+	assert.EqualError(t, err, "db error")
+}
+
 
 func TestCancelAtExactScheduledTime(t *testing.T) {
 	scheduledAt := time.Date(2024, 1, 1, 12, 30, 0, 0, time.UTC)

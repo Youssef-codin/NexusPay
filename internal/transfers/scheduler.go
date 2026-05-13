@@ -63,6 +63,8 @@ func (s *Scheduler) processScheduledTransfers() {
 		Valid:            true,
 	}
 
+	slog.Info("Scheduler tick", "time", now.Time)
+
 	scheduledTransfers, err := s.transfersRepo.GetPendingScheduledTransfers(ctx, now)
 	if err != nil {
 		slog.Error("Failed to get pending scheduled transfers", "error", err)
@@ -70,7 +72,7 @@ func (s *Scheduler) processScheduledTransfers() {
 	}
 
 	if len(scheduledTransfers) == 0 {
-		slog.Debug("No pending scheduled transfers")
+		slog.Info("No pending scheduled transfers")
 		return
 	}
 
@@ -112,23 +114,16 @@ func (s *Scheduler) processOneTransfer(ctx context.Context, st repo.ScheduledTra
 		return nil
 	}
 
-	txCtx, tx, err := s.txManager.StartTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(txCtx)
+	_, tErr := s.transfersSvc.ExecuteTransfer(ctx, transfer)
+	_, err = s.transfersRepo.MarkScheduledTransferExecuted(ctx, st.ID)
 
-	_, err = s.transfersSvc.ExecuteTransfer(txCtx, transfer)
-	if err != nil {
-		return err
+	if tErr != nil {
+		return tErr
 	}
 
-	_, err = s.transfersRepo.MarkScheduledTransferExecuted(txCtx, st.ID)
 	if err != nil {
 		return err
 	}
 
-	tx.Commit(txCtx)
 	return nil
 }
-

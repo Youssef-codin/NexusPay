@@ -99,6 +99,10 @@ migrate-create NAME="migration":
     goose create {{NAME}} sql
 
 [group('db')]
+seed-simple:
+    go run ./cmd/seed_simple
+
+[group('db')]
 seed:
     go run ./cmd/seed
 

@@ -37,7 +37,7 @@ func (h *handler) CreateTransfer(w http.ResponseWriter, req *http.Request) error
 	var dto CreateTransferRequest
 
 	if err := api.Read(req, &dto); err != nil {
-		return err
+		return api.WrappedError(http.StatusBadRequest, "Bad Request")
 	}
 
 	transfer, err := h.svc.CreateTransfer(req.Context(), dto)
@@ -127,10 +127,6 @@ func (h *handler) DeleteScheduledTransfer(w http.ResponseWriter, req *http.Reque
 	}
 	dto.TransferID = id
 
-	if err := api.Read(req, &dto); err != nil {
-		return err
-	}
-
 	result, err := h.svc.CancelScheduledTransfers(req.Context(), dto)
 	if err != nil {
 		switch {
@@ -142,6 +138,8 @@ func (h *handler) DeleteScheduledTransfer(w http.ResponseWriter, req *http.Reque
 			return api.WrappedError(http.StatusBadRequest, "Transfer already executed")
 		case errors.Is(err, ErrTooLateToCancel):
 			return api.WrappedError(http.StatusBadRequest, "Too late to cancel transfer")
+		case errors.Is(err, transactions.ErrInvalidStatusTransition):
+			return api.WrappedError(http.StatusBadRequest, "%s", err.Error())
 		default:
 			return err
 		}

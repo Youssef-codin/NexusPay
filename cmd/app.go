@@ -100,7 +100,7 @@ func (app *application) mount() http.Handler {
 
 	rmain.Group(func(rpublic chi.Router) {
 		rpublic.Use(httprate.Limit(
-			15,
+			30,
 			time.Minute,
 			httprate.WithKeyByIP(),
 			httprateredis.WithRedisLimitCounter(&httprateredis.Config{
@@ -124,21 +124,21 @@ func (app *application) mount() http.Handler {
 		rprotected.Use(authenticator.AuthHandler())
 
 		rprotected.Route("/users", func(r chi.Router) {
-			r.Use(api.NewUserLimiter(50, app.redis))
+			r.Use(api.NewUserLimiter(100, app.redis))
 			r.Get("/test", api.Wrap(AuthHandler.TestAuth))
 			r.Post("/logout", api.Wrap(AuthHandler.LogoutHandler))
 			r.Get("/", api.Wrap(UserHandler.SearchByName))
 		})
 
 		rprotected.Route("/wallet", func(r chi.Router) {
-			r.Use(api.NewUserLimiter(50, app.redis))
+			r.Use(api.NewUserLimiter(100, app.redis))
 			r.Get("/payments", api.Wrap(WalletHandler.GetPayments))
 			r.Get("/{userId}", api.Wrap(WalletHandler.GetByUserId))
 			r.Patch("/", api.Wrap(WalletHandler.TopUp))
 		})
 
 		rprotected.Route("/transfers", func(r chi.Router) {
-			r.Use(api.NewUserLimiter(10, app.redis))
+			r.Use(api.NewUserLimiter(30, app.redis))
 			r.Get("/", api.Wrap(TransfersHandler.GetTransfers))
 			r.Post("/", api.Wrap(TransfersHandler.CreateTransfer))
 

@@ -97,14 +97,10 @@ CREATE TRIGGER transfers_set_updated_at
 BEFORE UPDATE ON transfers
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER scheduled_transfers_set_updated_at
-BEFORE UPDATE ON scheduled_transfers
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TRIGGER IF EXISTS scheduled_transfers_set_updated_at ON scheduled_transfers;
 DROP TRIGGER IF EXISTS transfers_set_updated_at ON transfers;
 DROP TRIGGER IF EXISTS wallets_set_updated_at ON wallets;
 DROP TRIGGER IF EXISTS users_set_updated_at ON users;

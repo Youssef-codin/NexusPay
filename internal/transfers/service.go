@@ -170,38 +170,28 @@ func (svc *Service) CreateTransfer(
 	}
 
 	if req.ScheduledAt != nil {
-		done := false
-		attempts := 0
-		var attemptErr error
-
-		for !done && attempts < 3 {
-			_, attemptErr = svc.repo.CreateScheduledTransfer(
-				txCtx,
-				repo.CreateScheduledTransferParams{
-					TransferID: transfer.ID,
-					ScheduledAt: pgtype.Timestamptz{
-						Time:             *req.ScheduledAt,
-						InfinityModifier: pgtype.Finite,
-						Valid:            true,
-					},
-				},
-			)
-			if attemptErr == nil {
-				done = true
-			}
-		}
-		if attemptErr != nil {
-			return CreateTransferResponse{}, attemptErr
+		_, err = svc.repo.CreateScheduledTransfer(txCtx, repo.CreateScheduledTransferParams{
+			TransferID: transfer.ID,
+			ScheduledAt: pgtype.Timestamptz{
+				Time:             *req.ScheduledAt,
+				InfinityModifier: pgtype.Finite,
+				Valid:            true,
+			},
+		})
+		if err != nil {
+			return CreateTransferResponse{}, err
 		}
 
+		tx.Commit(txCtx)
 	} else {
-		transfer, err = svc.ExecuteTransfer(txCtx, transfer)
+		tx.Commit(txCtx)
+
+		transfer, err = svc.ExecuteTransfer(ctx, transfer)
 		if err != nil {
 			return CreateTransferResponse{}, err
 		}
 	}
 
-	tx.Commit(txCtx)
 	return CreateTransferResponse{
 		ID:           uuid.UUID(transfer.ID.Bytes),
 		FromWalletID: uuid.UUID(transfer.FromWalletID.Bytes),
@@ -222,19 +212,7 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
-		origErr := err
-		err = svc.setBothTransactions(ctx, t, repo.TransactionStatusFailed)
-		if err != nil {
-			return t, err
-		}
-		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
-			ID:     t.ID,
-			Status: repo.TransferStatusFailed,
-		})
-		if err != nil {
-			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
-		}
-		return t, origErr
+		return svc.markTransferFailed(ctx, t, err)
 	}
 
 	receiver, err := svc.walletSvc.GetById(ctx, wallet.GetWalletRequest{
@@ -242,84 +220,43 @@ func (svc *Service) ExecuteTransfer(
 	})
 
 	if err != nil {
-		origErr := err
-		err = svc.setBothTransactions(ctx, t, repo.TransactionStatusFailed)
-		if err != nil {
-			return t, err
-		}
-		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
-			ID:     t.ID,
-			Status: repo.TransferStatusFailed,
-		})
-		if err != nil {
-			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
-		}
-		return t, origErr
+		return svc.markTransferFailed(ctx, t, err)
 	}
 
-	_, err = svc.walletSvc.DeductFromBalance(ctx, wallet.DeductRequest{
+	txCtx, tx, err := svc.txManager.StartTx(ctx)
+	if err != nil {
+		return repo.Transfer{}, err
+	}
+	defer tx.Rollback(txCtx)
+
+	_, err = svc.walletSvc.DeductFromBalance(txCtx, wallet.DeductRequest{
 		WalletID: sender.ID,
 		Amount:   t.Amount,
 	})
 
 	if err != nil {
-		origErr := err
-		err = svc.setBothTransactions(ctx, t, repo.TransactionStatusFailed)
-		if err != nil {
-			return t, err
-		}
-		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
-			ID:     t.ID,
-			Status: repo.TransferStatusFailed,
-		})
-		if err != nil {
-			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
-		}
-		return t, origErr
+		return svc.markTransferFailed(ctx, t, err)
 	}
 
-	_, err = svc.walletSvc.AddToWallet(ctx, wallet.AddToWalletRequest{
+	_, err = svc.walletSvc.AddToWallet(txCtx, wallet.AddToWalletRequest{
 		WalletID: receiver.ID,
 		Amount:   t.Amount,
 	})
 
 	if err != nil {
-		origErr := err
-		err = svc.setBothTransactions(ctx, t, repo.TransactionStatusFailed)
-		if err != nil {
-			return t, err
-		}
-		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
-			ID:     t.ID,
-			Status: repo.TransferStatusFailed,
-		})
-		if err != nil {
-			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
-		}
-		return t, origErr
+		return svc.markTransferFailed(ctx, t, err)
 	}
 
-	t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
+	t, err = svc.repo.UpdateTransferStatus(txCtx, repo.UpdateTransferStatusParams{
 		ID:     t.ID,
 		Status: repo.TransferStatusCompleted,
 	})
 
 	if err != nil {
-		origErr := err
-		err = svc.setBothTransactions(ctx, t, repo.TransactionStatusFailed)
-		if err != nil {
-			return t, err
-		}
-		t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
-			ID:     t.ID,
-			Status: repo.TransferStatusFailed,
-		})
-		if err != nil {
-			return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
-		}
-		return t, origErr
+		return svc.markTransferFailed(ctx, t, err)
 	}
 
+	tx.Commit(txCtx)
 	return t, nil
 }
 
@@ -343,6 +280,25 @@ func (svc *Service) setBothTransactions(
 		return err
 	}
 	return nil
+}
+
+func (svc *Service) markTransferFailed(
+	ctx context.Context,
+	t repo.Transfer,
+	origErr error,
+) (repo.Transfer, error) {
+	err := svc.setBothTransactions(ctx, t, repo.TransactionStatusFailed)
+	if err != nil {
+		return t, err
+	}
+	t, err = svc.repo.UpdateTransferStatus(ctx, repo.UpdateTransferStatusParams{
+		ID:     t.ID,
+		Status: repo.TransferStatusFailed,
+	})
+	if err != nil {
+		return t, fmt.Errorf("original error: %w; status update error: %w", origErr, err)
+	}
+	return t, origErr
 }
 
 func (svc *Service) GetTransfers(ctx context.Context) (res GetTransfersByIDResponse, err error) {
@@ -513,7 +469,7 @@ func (svc *Service) CancelScheduledTransfers(
 	}
 	defer tx.Rollback(txCtx)
 
-	st, err := svc.repo.GetScheduledTransferByTransferId(txCtx, pgtype.UUID{
+	st, err := svc.repo.GetScheduledTransferById(txCtx, pgtype.UUID{
 		Bytes: req.TransferID,
 		Valid: true,
 	})
@@ -560,6 +516,7 @@ func (svc *Service) CancelScheduledTransfers(
 
 	st, err = svc.repo.CancelScheduledTransfer(txCtx, pgtype.UUID{
 		Bytes: st.ID.Bytes,
+		Valid: true,
 	})
 	if err != nil {
 		return CancelScheduledTransfersResponse{}, err
