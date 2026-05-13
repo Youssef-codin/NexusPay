@@ -1,11 +1,13 @@
 # NexusPay
 
-[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?style=flat&logo=postgresql)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D?style=flat&logo=redis)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-24+-2496ED?style=flat&logo=docker)](https://www.docker.com/)
 
 A production-ready digital wallet API built in Go, inspired by platforms like Telda.
+
+**Frontend:** [NexusPayApp](https://github.com/Youssef-codin/NexusPayApp)
 
 ---
 
@@ -38,7 +40,7 @@ A production-ready digital wallet API built in Go, inspired by platforms like Te
 ## Prerequisites
 
 - **Docker** — Required to run PostgreSQL and Redis
-- **Go** (1.22+) — If running without Docker
+- **Go** (1.26+) — If running without Docker
 - **just** — Optional, for running the scripts below
 - **Stripe CLI** — Optional, for testing webhook integration
 
@@ -72,6 +74,9 @@ Copy `.env.example` to `.env` and fill in the values:
 | `GOOSE_MIGRATION_DIR` | Path to migration files |
 | `JWT_SECRET` | Secret key for signing JWT tokens |
 | `STRIPE_SECRET_KEY` | Stripe API key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret for verifying events |
+| `FRONTEND_URL` | Frontend URL for CORS configuration |
+| `PORT` | Port the server listens on (default: 3000) |
 
 ---
 
@@ -122,11 +127,10 @@ just coverage
 
 - **Goroutine-powered scheduler** — Scheduled transfers execute asynchronously using Go's concurrency model. A cron job polls the database every minute and dispatches transfers using goroutines for parallel execution
 - **Double-entry bookkeeping** — Every transfer creates paired debit and credit transactions, ensuring full auditability and data consistency
-- **Redis caching** — Wallet balances and user profiles cached in Redis with automatic invalidation on writes to keep data fresh
-- **Rate limiting** — Per-user rate limiting on transfers (10 req/min) and top-ups (5 req/min), plus per-IP limiting on login to prevent abuse
+- **Rate limiting** — Per-user rate limiting on transfers (10 req/min) and top-ups (5 req/min), plus per-IP limiting on login to prevent brute-force and abuse; implemented via Redis sliding window counters
+- **Stripe integration** — Top-ups powered by Stripe Payment Intents with webhook-driven fulfillment and signature verification for security
 - **Crash-recovery guards** — Scheduled transfers use `SELECT ... FOR UPDATE SKIP LOCKED` to prevent duplicate execution across multiple instances, with a `processing` status that catches stale jobs for retry
 - **Soft deletes** — All major entities use soft deletes to preserve historical data
-- **Stripe webhook security** — All webhook events validated using Stripe's signature verification
 - **Idiomatic Go** — Clean layered architecture with handlers → services → repositories, generated type-safe SQL with sqlc, and structured logging with slog
 
 ---
