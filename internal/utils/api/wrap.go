@@ -47,7 +47,13 @@ func Wrap(f func(w http.ResponseWriter, req *http.Request) error) http.HandlerFu
 				"status", coded.Code,
 				"error", err,
 			)
-			log.Printf("REQUEST FAILED: method=%s path=%s status=%d error=%v", req.Method, req.URL.Path, coded.Code, err)
+			log.Printf(
+				"REQUEST FAILED: method=%s path=%s status=%d error=%v",
+				req.Method,
+				req.URL.Path,
+				coded.Code,
+				err,
+			)
 			Error(w, coded.Err.Error(), coded.Code)
 			return
 		}

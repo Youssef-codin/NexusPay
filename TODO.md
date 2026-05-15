@@ -1,7 +1,7 @@
 # TODO
 
-- [ ] Add analytics using AI
+- [ ] Rewrite to make it event-driven instead
+- [ ] Add AI analytics
 - [ ] Add caching for login
 - [ ] add Idempotency for transfer
 - [ ] add Pagination
-- [ ] add goroutines to scheduler
