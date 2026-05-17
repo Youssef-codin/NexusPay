@@ -19,7 +19,7 @@ type dbConfig struct {
 }
 
 func main() {
-	for _, f := range []string{".env", "../.env"} {
+	for _, f := range []string{".env.local", "../.env.local", ".env.prod", "../.env.prod"} {
 		if godotenv.Load(f) == nil {
 			break
 		}
