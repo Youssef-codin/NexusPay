@@ -1,7 +1,8 @@
 # TODO
 
-- [ ] Rewrite to make it event-driven instead
+- [ ] Rewrite
 - [ ] Add AI analytics
 - [ ] Add caching for login
 - [ ] add Idempotency for transfer
 - [ ] add Pagination
+- [ ] add paymob
