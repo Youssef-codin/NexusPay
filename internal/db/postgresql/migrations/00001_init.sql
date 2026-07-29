@@ -1,8 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TYPE transaction_type AS ENUM ('debit', 'credit');
-CREATE TYPE transaction_status AS ENUM ('pending', 'processing', 'completed', 'failed', 'reversed', 'reversing', 'cancelled');
-CREATE TYPE transfer_status AS ENUM ('pending', 'completed', 'failed', 'cancelled');
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE TYPE transaction_status AS ENUM ('awaiting_payment', 'crediting', 'scheduled', 'completed', 'failed');
+CREATE TYPE expense_category AS ENUM ('food', 'transport', 'bills', 'shopping', 'income', 'topup', 'other');
 
 CREATE TABLE users (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -11,71 +12,42 @@ CREATE TABLE users (
     full_name           TEXT NOT NULL,
     refresh_token       TEXT UNIQUE,
     token_expires_at    TIMESTAMPTZ,
+    balance             BIGINT NOT NULL DEFAULT 0,
+    is_system           BOOLEAN NOT NULL DEFAULT FALSE,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at          TIMESTAMPTZ
-);
-
-CREATE TABLE wallets (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL UNIQUE REFERENCES users(id),
-    balance     BIGINT NOT NULL DEFAULT 0 CHECK (balance >= 0),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at  TIMESTAMPTZ
-);
-
-CREATE TABLE transfers (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    from_wallet_id  UUID NOT NULL REFERENCES wallets(id),
-    to_wallet_id    UUID NOT NULL REFERENCES wallets(id),
-    amount          BIGINT NOT NULL CHECK (amount > 0),
-    status          transfer_status NOT NULL DEFAULT 'pending',
-    note            TEXT,
-    debit_transaction_id    UUID UNIQUE,
-    credit_transaction_id   UUID UNIQUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at      TIMESTAMPTZ
+    deleted_at          TIMESTAMPTZ,
+    -- The clearing-account rule: only system users (Stripe) may go negative.
+    -- Enforced row-level so no cross-table logic can be forgotten.
+    CONSTRAINT balance_non_negative CHECK (balance >= 0 OR is_system)
 );
 
 CREATE TABLE transactions (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    wallet_id   UUID NOT NULL REFERENCES wallets(id),
-    amount      BIGINT NOT NULL CHECK (amount > 0),
-    type        transaction_type NOT NULL,
-    status      transaction_status NOT NULL DEFAULT 'pending',
-    description TEXT DEFAULT NULL,
-    transfer_id UUID REFERENCES transfers(id) DEFERRABLE INITIALLY DEFERRED,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at  TIMESTAMPTZ
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sender_id           UUID NOT NULL REFERENCES users(id),
+    receiver_id         UUID NOT NULL REFERENCES users(id),
+    amount              BIGINT NOT NULL,
+    status              transaction_status NOT NULL,
+    note                TEXT,
+    sender_category     expense_category,
+    receiver_category   expense_category,
+    scheduled_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT sender_ne_receiver CHECK (sender_id <> receiver_id),
+    CONSTRAINT amount_positive    CHECK (amount > 0)
 );
-
-ALTER TABLE transfers
-    ADD CONSTRAINT fk_debit_transaction
-        FOREIGN KEY (debit_transaction_id) REFERENCES transactions(id) DEFERRABLE INITIALLY DEFERRED,
-    ADD CONSTRAINT fk_credit_transaction
-        FOREIGN KEY (credit_transaction_id) REFERENCES transactions(id) DEFERRABLE INITIALLY DEFERRED;
-
-CREATE TABLE scheduled_transfers (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transfer_id  UUID NOT NULL UNIQUE REFERENCES transfers(id),
-    scheduled_at TIMESTAMPTZ NOT NULL,
-    executed_at  TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at   TIMESTAMPTZ
-);
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE INDEX idx_users_name ON users(full_name);
 CREATE INDEX idx_users_name_trgm ON users USING GIN (full_name gin_trgm_ops);
-CREATE INDEX idx_wallets_user_id ON wallets(user_id);
-CREATE INDEX idx_transactions_wallet_id ON transactions(wallet_id);
-CREATE INDEX idx_transactions_transfer_id ON transactions(transfer_id);
-CREATE INDEX idx_transfers_from_wallet_id ON transfers(from_wallet_id);
-CREATE INDEX idx_transfers_to_wallet_id ON transfers(to_wallet_id);
-CREATE INDEX idx_scheduled_transfers_scheduled_at ON scheduled_transfers(scheduled_at);
+
+CREATE INDEX idx_transactions_sender_id ON transactions(sender_id);
+CREATE INDEX idx_transactions_receiver_id ON transactions(receiver_id);
+
+-- The scheduler's claim query.
+CREATE INDEX idx_transactions_due ON transactions(scheduled_at) WHERE status = 'scheduled';
+-- The sweeper's claim query: rows stuck mid-credit, found by updated_at.
+CREATE INDEX idx_transactions_stuck ON transactions(updated_at) WHERE status = 'crediting';
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -89,37 +61,28 @@ CREATE TRIGGER users_set_updated_at
 BEFORE UPDATE ON users
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER wallets_set_updated_at
-BEFORE UPDATE ON wallets
+-- The sweeper's five-minute threshold reads updated_at, so entering
+-- 'crediting' must stamp it.
+CREATE TRIGGER transactions_set_updated_at
+BEFORE UPDATE ON transactions
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER transfers_set_updated_at
-BEFORE UPDATE ON transfers
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
+-- Stripe as a system user: a top-up is then an ordinary transaction and every
+-- row nets to zero, which makes SUM(balance) = 0 a global invariant.
+-- The empty password can never satisfy a bcrypt compare, so this row cannot log in.
+INSERT INTO users (id, email, password, full_name, is_system)
+VALUES ('00000000-0000-0000-0000-000000000001', 'stripe@system.nexuspay', '', 'Stripe', TRUE);
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TRIGGER IF EXISTS transfers_set_updated_at ON transfers;
-DROP TRIGGER IF EXISTS wallets_set_updated_at ON wallets;
-DROP TRIGGER IF EXISTS users_set_updated_at ON users;
-
-DROP INDEX IF EXISTS idx_users_name_trgm;
-DROP EXTENSION IF EXISTS pg_trgm;
-DROP FUNCTION IF EXISTS set_updated_at();
-
-DROP TABLE IF EXISTS scheduled_transfers;
-
-ALTER TABLE transfers DROP CONSTRAINT IF EXISTS fk_debit_transaction;
-ALTER TABLE transfers DROP CONSTRAINT IF EXISTS fk_credit_transaction;
-
 DROP TABLE IF EXISTS transactions;
-DROP TABLE IF EXISTS transfers;
-DROP TABLE IF EXISTS wallets;
 DROP TABLE IF EXISTS users;
 
-DROP TYPE IF EXISTS transfer_status;
+DROP FUNCTION IF EXISTS set_updated_at();
+
+DROP TYPE IF EXISTS expense_category;
 DROP TYPE IF EXISTS transaction_status;
-DROP TYPE IF EXISTS transaction_type;
+
+DROP EXTENSION IF EXISTS pg_trgm;
 -- +goose StatementEnd

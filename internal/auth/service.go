@@ -9,7 +9,6 @@ import (
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/db/redisDb"
 	"github.com/Youssef-codin/NexusPay/internal/security"
-	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -38,7 +37,6 @@ type Service struct {
 	repo      authRepo
 	users     *redisDb.Users
 	auth      *security.Authenticator
-	wallet    wallet.IService
 }
 
 func NewService(
@@ -46,14 +44,12 @@ func NewService(
 	repo authRepo,
 	users *redisDb.Users,
 	auth *security.Authenticator,
-	wallet wallet.IService,
 ) IService {
 	return &Service{
 		txManager: txManager,
 		repo:      repo,
 		users:     users,
 		auth:      auth,
-		wallet:    wallet,
 	}
 }
 
@@ -140,14 +136,7 @@ func (svc *Service) register(ctx context.Context, req registerRequest) (register
 		return registerResponse{}, err
 	}
 
-	_, err = svc.wallet.CreateWallet(txCtx, wallet.CreateWalletRequest{
-		UserID: uuid.UUID(user.ID.Bytes),
-	})
-
-	if err != nil {
-		return registerResponse{}, err
-	}
-
+	// No wallet to create: the balance now starts at 0 on the users row itself.
 	jwtToken := svc.auth.MakeJWTToken(security.Claims{
 		ID: user.ID.String(),
 	})

@@ -1,0 +1,86 @@
+info:
+  name: Top up
+  type: http
+  seq: 6
+  tags:
+    - Transactions
+
+http:
+  method: POST
+  url: "{{baseUrl}}/transactions/topup"
+  body:
+    type: json
+    data: |-
+      {
+        "amount_in_piastres": 5000
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+docs: |-
+  Creates a Stripe PaymentIntent plus an 'awaiting_payment' transaction sent by
+  the Stripe system user. No balance changes here -- the credit only happens
+  when the payment_intent.succeeded webhook lands, and re-delivering that
+  webhook credits exactly once.
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 200 Response
+    description: PaymentIntent created
+    request:
+      url: "{{baseUrl}}/transactions/topup"
+      method: POST
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "amount_in_piastres": 5000
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "transaction_id": "123e4567-e89b-12d3-a456-426614174001",
+            "amount_in_piastres": 5000,
+            "status": "awaiting_payment",
+            "provider_payment_id": "pi_test123",
+            "client_secret": "pi_test123_secret_abc"
+          }
+  - name: 400 Response
+    description: Below the minimum
+    request:
+      url: "{{baseUrl}}/transactions/topup"
+      method: POST
+      body:
+        type: json
+        data: |-
+          {
+            "amount_in_piastres": 500
+          }
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "amount is too low, must be at least 10 EGP (1000 piastres)"
+          }

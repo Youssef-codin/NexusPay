@@ -11,116 +11,53 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createTransaction = `-- name: CreateTransaction :one
-INSERT INTO transactions
-    (wallet_id, amount, type, status, transfer_id, description)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, wallet_id, amount, type, status, transfer_id, created_at, description
-`
-
-type CreateTransactionParams struct {
-	WalletID    pgtype.UUID       `json:"wallet_id"`
-	Amount      int64             `json:"amount"`
-	Type        TransactionType   `json:"type"`
-	Status      TransactionStatus `json:"status"`
-	TransferID  pgtype.UUID       `json:"transfer_id"`
-	Description pgtype.Text       `json:"description"`
-}
-
-type CreateTransactionRow struct {
-	ID          pgtype.UUID        `json:"id"`
-	WalletID    pgtype.UUID        `json:"wallet_id"`
-	Amount      int64              `json:"amount"`
-	Type        TransactionType    `json:"type"`
-	Status      TransactionStatus  `json:"status"`
-	TransferID  pgtype.UUID        `json:"transfer_id"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	Description pgtype.Text        `json:"description"`
-}
-
-func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (CreateTransactionRow, error) {
-	row := q.db.QueryRow(ctx, createTransaction,
-		arg.WalletID,
-		arg.Amount,
-		arg.Type,
-		arg.Status,
-		arg.TransferID,
-		arg.Description,
-	)
-	var i CreateTransactionRow
-	err := row.Scan(
-		&i.ID,
-		&i.WalletID,
-		&i.Amount,
-		&i.Type,
-		&i.Status,
-		&i.TransferID,
-		&i.CreatedAt,
-		&i.Description,
-	)
-	return i, err
-}
-
-const getTransactionById = `-- name: GetTransactionById :one
-SELECT id, wallet_id, amount, type, status, description, transfer_id, created_at, updated_at, deleted_at
+const cancelScheduledTransaction = `-- name: CancelScheduledTransaction :one
+DELETE
 FROM transactions
 WHERE id = $1
-  AND deleted_at IS NULL
-    FOR UPDATE
+  AND sender_id = $2
+  AND status = 'scheduled'
+RETURNING id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
 `
 
-func (q *Queries) GetTransactionById(ctx context.Context, id pgtype.UUID) (Transaction, error) {
-	row := q.db.QueryRow(ctx, getTransactionById, id)
+type CancelScheduledTransactionParams struct {
+	ID       pgtype.UUID `json:"id"`
+	SenderID pgtype.UUID `json:"sender_id"`
+}
+
+// Races the scheduler correctly: this delete blocks on the scheduler's row
+// lock and then affects zero rows. Whichever lands first wins.
+func (q *Queries) CancelScheduledTransaction(ctx context.Context, arg CancelScheduledTransactionParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, cancelScheduledTransaction, arg.ID, arg.SenderID)
 	var i Transaction
 	err := row.Scan(
 		&i.ID,
-		&i.WalletID,
+		&i.SenderID,
+		&i.ReceiverID,
 		&i.Amount,
-		&i.Type,
 		&i.Status,
-		&i.Description,
-		&i.TransferID,
+		&i.Note,
+		&i.SenderCategory,
+		&i.ReceiverCategory,
+		&i.ScheduledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const getTransactionByTransferId = `-- name: GetTransactionByTransferId :one
-SELECT id, wallet_id, amount, type, status, description, transfer_id, created_at, updated_at, deleted_at
+const claimDueTransactions = `-- name: ClaimDueTransactions :many
+SELECT id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
 FROM transactions
-WHERE transfer_id = $1
-  AND deleted_at IS NULL
+WHERE status = 'scheduled'
+  AND scheduled_at <= NOW()
+ORDER BY scheduled_at
+FOR UPDATE SKIP LOCKED
+LIMIT $1
 `
 
-func (q *Queries) GetTransactionByTransferId(ctx context.Context, transferID pgtype.UUID) (Transaction, error) {
-	row := q.db.QueryRow(ctx, getTransactionByTransferId, transferID)
-	var i Transaction
-	err := row.Scan(
-		&i.ID,
-		&i.WalletID,
-		&i.Amount,
-		&i.Type,
-		&i.Status,
-		&i.Description,
-		&i.TransferID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getTransactionsByWalletId = `-- name: GetTransactionsByWalletId :many
-SELECT id, wallet_id, amount, type, status, description, transfer_id, created_at, updated_at, deleted_at
-FROM transactions
-WHERE wallet_id = $1
-  AND deleted_at IS NULL
-`
-
-func (q *Queries) GetTransactionsByWalletId(ctx context.Context, walletID pgtype.UUID) ([]Transaction, error) {
-	rows, err := q.db.Query(ctx, getTransactionsByWalletId, walletID)
+func (q *Queries) ClaimDueTransactions(ctx context.Context, limit int32) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, claimDueTransactions, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -130,15 +67,16 @@ func (q *Queries) GetTransactionsByWalletId(ctx context.Context, walletID pgtype
 		var i Transaction
 		if err := rows.Scan(
 			&i.ID,
-			&i.WalletID,
+			&i.SenderID,
+			&i.ReceiverID,
 			&i.Amount,
-			&i.Type,
 			&i.Status,
-			&i.Description,
-			&i.TransferID,
+			&i.Note,
+			&i.SenderCategory,
+			&i.ReceiverCategory,
+			&i.ScheduledAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -150,33 +88,329 @@ func (q *Queries) GetTransactionsByWalletId(ctx context.Context, walletID pgtype
 	return items, nil
 }
 
-const updateTransactionStatus = `-- name: UpdateTransactionStatus :one
-UPDATE transactions
-SET status = $2
-WHERE id = $1
-  AND deleted_at IS NULL
-RETURNING id, wallet_id, amount, type, status, description, transfer_id, created_at, updated_at, deleted_at
+const claimStuckCrediting = `-- name: ClaimStuckCrediting :many
+SELECT id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
+FROM transactions
+WHERE status = 'crediting'
+  AND updated_at < NOW() - INTERVAL '5 minutes'
+ORDER BY updated_at
+FOR UPDATE SKIP LOCKED
+LIMIT $1
 `
 
-type UpdateTransactionStatusParams struct {
-	ID     pgtype.UUID       `json:"id"`
-	Status TransactionStatus `json:"status"`
+func (q *Queries) ClaimStuckCrediting(ctx context.Context, limit int32) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, claimStuckCrediting, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.SenderID,
+			&i.ReceiverID,
+			&i.Amount,
+			&i.Status,
+			&i.Note,
+			&i.SenderCategory,
+			&i.ReceiverCategory,
+			&i.ScheduledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) UpdateTransactionStatus(ctx context.Context, arg UpdateTransactionStatusParams) (Transaction, error) {
-	row := q.db.QueryRow(ctx, updateTransactionStatus, arg.ID, arg.Status)
+const createTransaction = `-- name: CreateTransaction :one
+INSERT INTO transactions (sender_id,
+                          receiver_id,
+                          amount,
+                          status,
+                          note,
+                          sender_category,
+                          scheduled_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
+`
+
+type CreateTransactionParams struct {
+	SenderID       pgtype.UUID         `json:"sender_id"`
+	ReceiverID     pgtype.UUID         `json:"receiver_id"`
+	Amount         int64               `json:"amount"`
+	Status         TransactionStatus   `json:"status"`
+	Note           pgtype.Text         `json:"note"`
+	SenderCategory NullExpenseCategory `json:"sender_category"`
+	ScheduledAt    pgtype.Timestamptz  `json:"scheduled_at"`
+}
+
+func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, createTransaction,
+		arg.SenderID,
+		arg.ReceiverID,
+		arg.Amount,
+		arg.Status,
+		arg.Note,
+		arg.SenderCategory,
+		arg.ScheduledAt,
+	)
 	var i Transaction
 	err := row.Scan(
 		&i.ID,
-		&i.WalletID,
+		&i.SenderID,
+		&i.ReceiverID,
 		&i.Amount,
-		&i.Type,
 		&i.Status,
-		&i.Description,
-		&i.TransferID,
+		&i.Note,
+		&i.SenderCategory,
+		&i.ReceiverCategory,
+		&i.ScheduledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getTransactionById = `-- name: GetTransactionById :one
+SELECT id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
+FROM transactions
+WHERE id = $1
+`
+
+func (q *Queries) GetTransactionById(ctx context.Context, id pgtype.UUID) (Transaction, error) {
+	row := q.db.QueryRow(ctx, getTransactionById, id)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Amount,
+		&i.Status,
+		&i.Note,
+		&i.SenderCategory,
+		&i.ReceiverCategory,
+		&i.ScheduledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTransactionByIdWithUsers = `-- name: GetTransactionByIdWithUsers :one
+SELECT t.id, t.sender_id, t.receiver_id, t.amount, t.status, t.note, t.sender_category, t.receiver_category, t.scheduled_at, t.created_at, t.updated_at,
+       s.full_name AS sender_name,
+       r.full_name AS receiver_name
+FROM transactions t
+         JOIN users s ON s.id = t.sender_id
+         JOIN users r ON r.id = t.receiver_id
+WHERE t.id = $1
+`
+
+type GetTransactionByIdWithUsersRow struct {
+	ID               pgtype.UUID         `json:"id"`
+	SenderID         pgtype.UUID         `json:"sender_id"`
+	ReceiverID       pgtype.UUID         `json:"receiver_id"`
+	Amount           int64               `json:"amount"`
+	Status           TransactionStatus   `json:"status"`
+	Note             pgtype.Text         `json:"note"`
+	SenderCategory   NullExpenseCategory `json:"sender_category"`
+	ReceiverCategory NullExpenseCategory `json:"receiver_category"`
+	ScheduledAt      pgtype.Timestamptz  `json:"scheduled_at"`
+	CreatedAt        pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz  `json:"updated_at"`
+	SenderName       string              `json:"sender_name"`
+	ReceiverName     string              `json:"receiver_name"`
+}
+
+func (q *Queries) GetTransactionByIdWithUsers(ctx context.Context, id pgtype.UUID) (GetTransactionByIdWithUsersRow, error) {
+	row := q.db.QueryRow(ctx, getTransactionByIdWithUsers, id)
+	var i GetTransactionByIdWithUsersRow
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Amount,
+		&i.Status,
+		&i.Note,
+		&i.SenderCategory,
+		&i.ReceiverCategory,
+		&i.ScheduledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SenderName,
+		&i.ReceiverName,
+	)
+	return i, err
+}
+
+const getTransactionsByUserId = `-- name: GetTransactionsByUserId :many
+SELECT t.id, t.sender_id, t.receiver_id, t.amount, t.status, t.note, t.sender_category, t.receiver_category, t.scheduled_at, t.created_at, t.updated_at,
+       s.full_name AS sender_name,
+       r.full_name AS receiver_name
+FROM transactions t
+         JOIN users s ON s.id = t.sender_id
+         JOIN users r ON r.id = t.receiver_id
+WHERE t.sender_id = $1
+   OR t.receiver_id = $1
+ORDER BY t.created_at DESC
+`
+
+type GetTransactionsByUserIdRow struct {
+	ID               pgtype.UUID         `json:"id"`
+	SenderID         pgtype.UUID         `json:"sender_id"`
+	ReceiverID       pgtype.UUID         `json:"receiver_id"`
+	Amount           int64               `json:"amount"`
+	Status           TransactionStatus   `json:"status"`
+	Note             pgtype.Text         `json:"note"`
+	SenderCategory   NullExpenseCategory `json:"sender_category"`
+	ReceiverCategory NullExpenseCategory `json:"receiver_category"`
+	ScheduledAt      pgtype.Timestamptz  `json:"scheduled_at"`
+	CreatedAt        pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz  `json:"updated_at"`
+	SenderName       string              `json:"sender_name"`
+	ReceiverName     string              `json:"receiver_name"`
+}
+
+func (q *Queries) GetTransactionsByUserId(ctx context.Context, senderID pgtype.UUID) ([]GetTransactionsByUserIdRow, error) {
+	rows, err := q.db.Query(ctx, getTransactionsByUserId, senderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTransactionsByUserIdRow
+	for rows.Next() {
+		var i GetTransactionsByUserIdRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SenderID,
+			&i.ReceiverID,
+			&i.Amount,
+			&i.Status,
+			&i.Note,
+			&i.SenderCategory,
+			&i.ReceiverCategory,
+			&i.ScheduledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SenderName,
+			&i.ReceiverName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const guardedSetStatus = `-- name: GuardedSetStatus :one
+UPDATE transactions
+SET status = $1
+WHERE id = $2
+  AND status = $3
+RETURNING id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
+`
+
+type GuardedSetStatusParams struct {
+	ToStatus   TransactionStatus `json:"to_status"`
+	ID         pgtype.UUID       `json:"id"`
+	FromStatus TransactionStatus `json:"from_status"`
+}
+
+// The whole rewrite in one statement: the status guard makes the update claim
+// the row, and the row lock serializes concurrent callers. Zero rows
+// (pgx.ErrNoRows) means somebody else already did this work.
+func (q *Queries) GuardedSetStatus(ctx context.Context, arg GuardedSetStatusParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, guardedSetStatus, arg.ToStatus, arg.ID, arg.FromStatus)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Amount,
+		&i.Status,
+		&i.Note,
+		&i.SenderCategory,
+		&i.ReceiverCategory,
+		&i.ScheduledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setReceiverCategory = `-- name: SetReceiverCategory :one
+UPDATE transactions
+SET receiver_category = $1
+WHERE id = $2
+  AND receiver_id = $3
+RETURNING id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
+`
+
+type SetReceiverCategoryParams struct {
+	Category   NullExpenseCategory `json:"category"`
+	ID         pgtype.UUID         `json:"id"`
+	ReceiverID pgtype.UUID         `json:"receiver_id"`
+}
+
+func (q *Queries) SetReceiverCategory(ctx context.Context, arg SetReceiverCategoryParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, setReceiverCategory, arg.Category, arg.ID, arg.ReceiverID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Amount,
+		&i.Status,
+		&i.Note,
+		&i.SenderCategory,
+		&i.ReceiverCategory,
+		&i.ScheduledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setSenderCategory = `-- name: SetSenderCategory :one
+UPDATE transactions
+SET sender_category = $1
+WHERE id = $2
+  AND sender_id = $3
+RETURNING id, sender_id, receiver_id, amount, status, note, sender_category, receiver_category, scheduled_at, created_at, updated_at
+`
+
+type SetSenderCategoryParams struct {
+	Category NullExpenseCategory `json:"category"`
+	ID       pgtype.UUID         `json:"id"`
+	SenderID pgtype.UUID         `json:"sender_id"`
+}
+
+func (q *Queries) SetSenderCategory(ctx context.Context, arg SetSenderCategoryParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, setSenderCategory, arg.Category, arg.ID, arg.SenderID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Amount,
+		&i.Status,
+		&i.Note,
+		&i.SenderCategory,
+		&i.ReceiverCategory,
+		&i.ScheduledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

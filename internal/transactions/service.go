@@ -3,238 +3,200 @@ package transactions
 import (
 	"context"
 	"errors"
-	"fmt"
 
+	"github.com/Youssef-codin/NexusPay/internal/db"
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
-	"github.com/Youssef-codin/NexusPay/internal/utils/validator"
+	"github.com/Youssef-codin/NexusPay/internal/payment"
+	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
-	ErrTransactionNotFound     = errors.New("transaction not found")
-	ErrBadRequest              = errors.New("bad request")
-	ErrInsufficientFunds       = errors.New("insufficient funds")
-	ErrAlreadySameStatus       = errors.New("transaction is already in the same state")
-	ErrInvalidStatusTransition = errors.New("invalid state change")
+	ErrNotImplemented      = errors.New("not implemented")
+	ErrTransactionNotFound = errors.New("transaction not found")
+	ErrBadRequest          = errors.New("bad request")
+	ErrSelfTransfer        = errors.New("can not transfer to self")
+	ErrInsufficientFunds   = errors.New("insufficient funds")
+	ErrWrongOwnership      = errors.New("transaction belongs to somebody else")
+	ErrNotScheduled        = errors.New("transaction is no longer scheduled")
+	ErrAmountIsTooLow      = errors.New(
+		"amount is too low, must be at least 10 EGP (1000 piastres)",
+	)
+	// ErrAlreadyProcessed means a guarded update matched zero rows: another
+	// worker got there first. It is SUCCESS for every caller -- that single
+	// fact is what makes the webhook idempotent, Complete idempotent and
+	// scheduled transfers claim-once.
+	ErrAlreadyProcessed = errors.New("transaction already processed")
 )
 
 type IService interface {
-	GetById(ctx context.Context, req GetByIdRequest) (GetTransactionResponse, error)
-	GetByWalletId(ctx context.Context, walletID uuid.UUID) (GetByWalletIdResponse, error)
-	CreateTransaction(
+	Create(ctx context.Context, req CreateTransactionRequest) (TransactionResponse, error)
+	List(ctx context.Context) (ListTransactionsResponse, error)
+	GetByID(ctx context.Context, id uuid.UUID) (GetTransactionResponse, error)
+	Cancel(ctx context.Context, id uuid.UUID) (CancelTransactionResponse, error)
+	SetCategory(ctx context.Context, req SetCategoryRequest) (GetTransactionResponse, error)
+	TopUp(ctx context.Context, req TopUpRequest) (TopUpResponse, error)
+
+	// Complete is the one function that moves money. The webhook, immediate
+	// transfers, the scheduler and the sweeper all call this and nothing else
+	// moves a balance.
+	Complete(
 		ctx context.Context,
-		req CreateTransactionRequest,
-	) (CreateTransactionResponse, error)
-	UpdateStatus(ctx context.Context, req UpdateTransactionRequest) error
+		id uuid.UUID,
+		from repo.TransactionStatus,
+	) (repo.Transaction, error)
+	// Transition is a guarded status change that touches no balance: the
+	// webhook's awaiting_payment -> crediting claim and the failure paths.
+	Transition(
+		ctx context.Context,
+		id uuid.UUID,
+		from, to repo.TransactionStatus,
+	) (repo.Transaction, error)
 }
 
 type Service struct {
-	repo transactionRepo
+	txManager  db.TxManager
+	repo       transactionRepo
+	userSvc    users.IService
+	paymentSvc payment.IService
 }
 
 func NewService(
+	txManager db.TxManager,
 	repo transactionRepo,
+	userSvc users.IService,
+	paymentSvc payment.IService,
 ) IService {
 	return &Service{
-		repo: repo,
+		txManager:  txManager,
+		repo:       repo,
+		userSvc:    userSvc,
+		paymentSvc: paymentSvc,
 	}
 }
 
-func (svc *Service) GetById(
-	ctx context.Context,
-	req GetByIdRequest,
-) (GetTransactionResponse, error) {
-	if err := validator.Validate(&req); err != nil {
-		return GetTransactionResponse{}, err
-	}
-
-	transaction, err := svc.repo.GetTransactionById(ctx, pgtype.UUID{
-		Bytes: req.ID,
-		Valid: true,
-	})
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return GetTransactionResponse{}, ErrTransactionNotFound
-		}
-
-		return GetTransactionResponse{}, err
-	}
-
-	var transferID *uuid.UUID
-	if transaction.TransferID.Valid {
-		t := uuid.UUID(transaction.TransferID.Bytes)
-		transferID = &t
-	}
-
-	return GetTransactionResponse{
-		ID:          uuid.UUID(transaction.ID.Bytes),
-		WalletID:    uuid.UUID(transaction.WalletID.Bytes),
-		Amount:      transaction.Amount,
-		Type:        transaction.Type,
-		Status:      transaction.Status,
-		TransferID:  transferID,
-		CreatedAt:   transaction.CreatedAt.Time,
-		UpdatedAt:   transaction.UpdatedAt.Time,
-		DeletedAt:   &transaction.DeletedAt.Time,
-		Description: transaction.Description.String,
-	}, nil
-}
-
-func (svc *Service) GetByWalletId(
-	ctx context.Context,
-	walletID uuid.UUID,
-) (GetByWalletIdResponse, error) {
-	transactions, err := svc.repo.GetTransactionsByWalletId(ctx, pgtype.UUID{
-		Bytes: walletID,
-		Valid: true,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(GetByWalletIdResponse, 0, len(transactions))
-	for _, t := range transactions {
-		var transferID *uuid.UUID
-		if t.TransferID.Valid {
-			id := uuid.UUID(t.TransferID.Bytes)
-			transferID = &id
-		}
-
-		result = append(result, GetTransactionResponse{
-			ID:          uuid.UUID(t.ID.Bytes),
-			WalletID:    uuid.UUID(t.WalletID.Bytes),
-			Amount:      t.Amount,
-			Type:        t.Type,
-			Status:      t.Status,
-			TransferID:  transferID,
-			CreatedAt:   t.CreatedAt.Time,
-			UpdatedAt:   t.UpdatedAt.Time,
-			DeletedAt:   &t.DeletedAt.Time,
-			Description: t.Description.String,
-		})
-	}
-
-	return result, nil
-}
-
-func (svc *Service) CreateTransaction(
+func (svc *Service) Create(
 	ctx context.Context,
 	req CreateTransactionRequest,
-) (CreateTransactionResponse, error) {
-	if err := validator.Validate(&req); err != nil {
-		return CreateTransactionResponse{}, err
-	}
-
-	transaction, err := svc.repo.CreateTransaction(ctx, repo.CreateTransactionParams{
-		WalletID: pgtype.UUID{
-			Bytes: req.WalletID,
-			Valid: true,
-		},
-		Amount:     req.Amount,
-		Type:       req.Type,
-		Status:     repo.TransactionStatusPending,
-		TransferID: pgtype.UUID{Valid: false},
-		Description: pgtype.Text{
-			String: req.Description,
-			Valid:  true,
-		},
-	})
-
-	if err != nil {
-		return CreateTransactionResponse{}, err
-	}
-
-	return CreateTransactionResponse{
-		ID:          uuid.UUID(transaction.ID.Bytes),
-		WalletID:    uuid.UUID(transaction.WalletID.Bytes),
-		Amount:      transaction.Amount,
-		Type:        transaction.Type,
-		Status:      transaction.Status,
-		CreatedAt:   transaction.CreatedAt.Time,
-		Description: transaction.Description.String,
-	}, nil
+) (TransactionResponse, error) {
+	return TransactionResponse{}, ErrNotImplemented
 }
 
-func (svc *Service) UpdateStatus(
+func (svc *Service) List(ctx context.Context) (ListTransactionsResponse, error) {
+	return ListTransactionsResponse{}, ErrNotImplemented
+}
+
+func (svc *Service) GetByID(
 	ctx context.Context,
-	req UpdateTransactionRequest,
-) error {
-	if err := validator.Validate(&req); err != nil {
-		return err
-	}
-
-	transaction, err := svc.repo.GetTransactionById(ctx, pgtype.UUID{
-		Bytes: req.ID,
-		Valid: true,
-	})
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrTransactionNotFound
-		}
-		return err
-	}
-
-	from := transaction.Status
-	to := req.Status
-
-	if from == to {
-		return ErrAlreadySameStatus
-	}
-
-	switch from {
-	case repo.TransactionStatusPending:
-		if to != repo.TransactionStatusProcessing &&
-			to != repo.TransactionStatusReversed &&
-			to != repo.TransactionStatusFailed &&
-			to != repo.TransactionStatusCancelled {
-			return errInvalidTransition(from, to)
-		}
-	case repo.TransactionStatusProcessing:
-		if to != repo.TransactionStatusCompleted &&
-			to != repo.TransactionStatusFailed {
-			return errInvalidTransition(from, to)
-		}
-	case repo.TransactionStatusCompleted:
-		if to != repo.TransactionStatusReversing {
-			return errInvalidTransition(from, to)
-		}
-	case repo.TransactionStatusFailed, repo.TransactionStatusReversed:
-		return errInvalidTransition(from, to)
-
-	case repo.TransactionStatusReversing:
-		if to != repo.TransactionStatusReversed &&
-			to != repo.TransactionStatusFailed {
-			return errInvalidTransition(from, to)
-		}
-	default:
-		return ErrBadRequest
-	}
-
-	_, err = svc.repo.UpdateTransactionStatus(ctx, repo.UpdateTransactionStatusParams{
-		ID: pgtype.UUID{
-			Bytes: req.ID,
-			Valid: true,
-		},
-		Status: req.Status,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+	id uuid.UUID,
+) (GetTransactionResponse, error) {
+	return GetTransactionResponse{}, ErrNotImplemented
 }
 
-func errInvalidTransition(from, to repo.TransactionStatus) error {
-	return fmt.Errorf("cannot transition from %s to %s: %w",
-		from,
-		to,
-		ErrInvalidStatusTransition,
-	)
+func (svc *Service) Cancel(
+	ctx context.Context,
+	id uuid.UUID,
+) (CancelTransactionResponse, error) {
+	return CancelTransactionResponse{}, ErrNotImplemented
+}
 
+func (svc *Service) SetCategory(
+	ctx context.Context,
+	req SetCategoryRequest,
+) (GetTransactionResponse, error) {
+	return GetTransactionResponse{}, ErrNotImplemented
+}
+
+func (svc *Service) TopUp(ctx context.Context, req TopUpRequest) (TopUpResponse, error) {
+	return TopUpResponse{}, ErrNotImplemented
+}
+
+func (svc *Service) Complete(
+	ctx context.Context,
+	id uuid.UUID,
+	from repo.TransactionStatus,
+) (repo.Transaction, error) {
+	return repo.Transaction{}, ErrNotImplemented
+}
+
+func (svc *Service) Transition(
+	ctx context.Context,
+	id uuid.UUID,
+	from, to repo.TransactionStatus,
+) (repo.Transaction, error) {
+	return repo.Transaction{}, ErrNotImplemented
+}
+
+// toResponse maps a joined row to the API shape. viewer decides the direction
+// field; pass uuid.Nil to leave it blank.
+func toResponse(
+	id, senderID, receiverID uuid.UUID,
+	senderName, receiverName string,
+	t repo.Transaction,
+	viewer uuid.UUID,
+) TransactionResponse {
+	direction := ""
+	switch viewer {
+	case senderID:
+		direction = "debit"
+	case receiverID:
+		direction = "credit"
+	}
+
+	return TransactionResponse{
+		ID:               id,
+		Sender:           UserMini{ID: senderID, FullName: senderName},
+		Receiver:         UserMini{ID: receiverID, FullName: receiverName},
+		Amount:           t.Amount,
+		Direction:        direction,
+		Status:           t.Status,
+		Note:             t.Note.String,
+		SenderCategory:   t.SenderCategory.ExpenseCategory,
+		ReceiverCategory: t.ReceiverCategory.ExpenseCategory,
+		ScheduledAt:      t.ScheduledAt.Time,
+		CreatedAt:        t.CreatedAt.Time,
+	}
+}
+
+func rowToResponse(r repo.GetTransactionsByUserIdRow, viewer uuid.UUID) TransactionResponse {
+	return toResponse(
+		uuid.UUID(r.ID.Bytes),
+		uuid.UUID(r.SenderID.Bytes),
+		uuid.UUID(r.ReceiverID.Bytes),
+		r.SenderName,
+		r.ReceiverName,
+		repo.Transaction{
+			Amount:           r.Amount,
+			Status:           r.Status,
+			Note:             r.Note,
+			SenderCategory:   r.SenderCategory,
+			ReceiverCategory: r.ReceiverCategory,
+			ScheduledAt:      r.ScheduledAt,
+			CreatedAt:        r.CreatedAt,
+		},
+		viewer,
+	)
+}
+
+func singleRowToResponse(
+	r repo.GetTransactionByIdWithUsersRow,
+	viewer uuid.UUID,
+) TransactionResponse {
+	return toResponse(
+		uuid.UUID(r.ID.Bytes),
+		uuid.UUID(r.SenderID.Bytes),
+		uuid.UUID(r.ReceiverID.Bytes),
+		r.SenderName,
+		r.ReceiverName,
+		repo.Transaction{
+			Amount:           r.Amount,
+			Status:           r.Status,
+			Note:             r.Note,
+			SenderCategory:   r.SenderCategory,
+			ReceiverCategory: r.ReceiverCategory,
+			ScheduledAt:      r.ScheduledAt,
+			CreatedAt:        r.CreatedAt,
+		},
+		viewer,
+	)
 }
