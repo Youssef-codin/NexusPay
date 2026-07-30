@@ -34,7 +34,7 @@ CREATE TABLE transactions (
     scheduled_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT sender_ne_receiver CHECK (sender_id <> receiver_id),
+    CONSTRAINT sender_ne_receiver CHECK (sender_id != receiver_id),
     CONSTRAINT amount_positive    CHECK (amount > 0)
 );
 
