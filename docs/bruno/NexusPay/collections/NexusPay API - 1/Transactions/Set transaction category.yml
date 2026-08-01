@@ -1,0 +1,87 @@
+info:
+  name: Set transaction category
+  type: http
+  seq: 5
+  tags:
+    - Transactions
+
+http:
+  method: PATCH
+  url: "{{baseUrl}}/transactions/:id/category"
+  params:
+    - name: id
+      value: ""
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "category": "food"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+docs: |-
+  Sets sender_category or receiver_category depending on which side of the
+  transaction the caller is on. One of: food, transport, bills, shopping,
+  income, topup, other.
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 200 Response
+    description: Category set
+    request:
+      url: "{{baseUrl}}/transactions/:id/category"
+      method: PATCH
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "category": "food"
+          }
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "transaction": {
+              "id": "123e4567-e89b-12d3-a456-426614174001",
+              "sender": { "id": "123e4567-e89b-12d3-a456-426614174000", "full_name": "John Doe" },
+              "receiver": { "id": "123e4567-e89b-12d3-a456-426614174002", "full_name": "Jane Roe" },
+              "amount_in_piastres": 5000,
+              "status": "completed",
+              "sender_category": "food",
+              "created_at": "2024-01-15T10:30:00Z"
+            }
+          }
+  - name: 400 Response
+    description: Invalid category
+    request:
+      url: "{{baseUrl}}/transactions/:id/category"
+      method: PATCH
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Invalid expense category"
+          }

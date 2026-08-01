@@ -23,6 +23,7 @@ RETURNING
     email,
     full_name,
     refresh_token,
+    balance,
     created_at
 `
 
@@ -39,6 +40,7 @@ type CreateUserRow struct {
 	Email        string             `json:"email"`
 	FullName     string             `json:"full_name"`
 	RefreshToken pgtype.Text        `json:"refresh_token"`
+	Balance      int64              `json:"balance"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -56,13 +58,97 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		&i.Email,
 		&i.FullName,
 		&i.RefreshToken,
+		&i.Balance,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
+const creditUser = `-- name: CreditUser :one
+UPDATE users
+SET balance = balance + $1
+WHERE id = $2
+  AND deleted_at IS NULL
+RETURNING id, email, password, full_name, refresh_token, token_expires_at, balance, is_system, created_at, updated_at, deleted_at
+`
+
+type CreditUserParams struct {
+	Amount int64       `json:"amount"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) CreditUser(ctx context.Context, arg CreditUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, creditUser, arg.Amount, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Password,
+		&i.FullName,
+		&i.RefreshToken,
+		&i.TokenExpiresAt,
+		&i.Balance,
+		&i.IsSystem,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const debitUser = `-- name: DebitUser :one
+UPDATE users
+SET balance = balance - $1
+WHERE id = $2
+  AND (balance >= $1 OR is_system)
+  AND deleted_at IS NULL
+RETURNING id, email, password, full_name, refresh_token, token_expires_at, balance, is_system, created_at, updated_at, deleted_at
+`
+
+type DebitUserParams struct {
+	Amount int64       `json:"amount"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+// Zero rows means insufficient funds. This guard, inside the money-moving
+// transaction, is the ONLY thing enforcing sufficient funds -- a read taken
+// outside the transaction protects nothing. The system-account carve-out lives
+// here so callers never have to branch on it.
+func (q *Queries) DebitUser(ctx context.Context, arg DebitUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, debitUser, arg.Amount, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Password,
+		&i.FullName,
+		&i.RefreshToken,
+		&i.TokenExpiresAt,
+		&i.Balance,
+		&i.IsSystem,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getBalance = `-- name: GetBalance :one
+SELECT balance
+FROM users
+WHERE id = $1
+  AND deleted_at IS NULL
+`
+
+func (q *Queries) GetBalance(ctx context.Context, id pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getBalance, id)
+	var balance int64
+	err := row.Scan(&balance)
+	return balance, err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+SELECT id, email, password, full_name, refresh_token, token_expires_at, balance, is_system, created_at, updated_at, deleted_at
 FROM users
 WHERE email = $1
   AND deleted_at IS NULL
@@ -78,6 +164,8 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.FullName,
 		&i.RefreshToken,
 		&i.TokenExpiresAt,
+		&i.Balance,
+		&i.IsSystem,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -86,10 +174,10 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+SELECT id, email, password, full_name, refresh_token, token_expires_at, balance, is_system, created_at, updated_at, deleted_at
 FROM users
 WHERE id = $1
-  AND deleted_at IS NULL FOR UPDATE
+  AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -102,6 +190,8 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.FullName,
 		&i.RefreshToken,
 		&i.TokenExpiresAt,
+		&i.Balance,
+		&i.IsSystem,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -110,10 +200,11 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 }
 
 const getUserByName = `-- name: GetUserByName :many
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+SELECT id, email, password, full_name, refresh_token, token_expires_at, balance, is_system, created_at, updated_at, deleted_at
 FROM users
 WHERE full_name % $1
   AND deleted_at IS NULL
+  AND NOT is_system
 ORDER BY similarity(full_name, $1) DESC
 `
 
@@ -133,6 +224,8 @@ func (q *Queries) GetUserByName(ctx context.Context, fullName string) ([]User, e
 			&i.FullName,
 			&i.RefreshToken,
 			&i.TokenExpiresAt,
+			&i.Balance,
+			&i.IsSystem,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -148,7 +241,7 @@ func (q *Queries) GetUserByName(ctx context.Context, fullName string) ([]User, e
 }
 
 const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
-SELECT id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+SELECT id, email, password, full_name, refresh_token, token_expires_at, balance, is_system, created_at, updated_at, deleted_at
 FROM users
 WHERE refresh_token = $1
   AND deleted_at IS NULL
@@ -164,6 +257,8 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, refreshToken pgtype
 		&i.FullName,
 		&i.RefreshToken,
 		&i.TokenExpiresAt,
+		&i.Balance,
+		&i.IsSystem,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
@@ -221,7 +316,7 @@ SET full_name = $2,
     email     = $3
 WHERE id = $1
   AND deleted_at IS NULL
-RETURNING id, email, password, full_name, refresh_token, token_expires_at, created_at, updated_at, deleted_at
+RETURNING id, email, password, full_name, refresh_token, token_expires_at, balance, is_system, created_at, updated_at, deleted_at
 `
 
 type UpdateUserDetailsParams struct {
@@ -240,6 +335,8 @@ func (q *Queries) UpdateUserDetails(ctx context.Context, arg UpdateUserDetailsPa
 		&i.FullName,
 		&i.RefreshToken,
 		&i.TokenExpiresAt,
+		&i.Balance,
+		&i.IsSystem,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,

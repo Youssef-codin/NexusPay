@@ -312,647 +312,6 @@ paths:
       responses:
         '204':
           description: No Content
-  /transfers/:
-    post:
-      summary: Create transfer
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_transfers_create_transfer_yml
-      description: ''
-      tags:
-        - Transfers
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  from_wallet_id:
-                    type: string
-                  to_wallet_id:
-                    type: string
-                  amount_in_piastres:
-                    type: integer
-                  status:
-                    type: string
-                  note:
-                    type: string
-                  created_at:
-                    type: string
-              examples:
-                200_Response:
-                  value:
-                    id: 123e4567-e89b-12d3-a456-426614174001
-                    from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
-                    to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
-                    amount_in_piastres: 5000
-                    status: completed
-                    note: Dinner split
-                    created_at: '2024-01-15T10:30:00Z'
-                  summary: 200 Response
-                  description: Transfer created successfully
-                200_Response_Scheduled:
-                  value:
-                    id: 123e4567-e89b-12d3-a456-426614174001
-                    from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
-                    to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
-                    amount_in_piastres: 5000
-                    status: pending
-                    note: Rent payment
-                    created_at: '2024-01-15T10:30:00Z'
-                  summary: 200 Response (Scheduled)
-                  description: Scheduled transfer created successfully
-                example:
-                  value:
-                    id: 123e4567-e89b-12d3-a456-426614174001
-                    from_wallet_id: 023e4567-e89b-12d3-a456-426614174000
-                    to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
-                    amount_in_piastres: 5000
-                    status: completed
-                    note: Dinner split
-                    created_at: '2024-01-15T10:30:00Z'
-                  summary: example
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              examples:
-                400_Response:
-                  value:
-                    error: Bad request
-                    message: Amount must be at least 1000 piastres
-                    status_code: 400
-                  summary: 400 Response
-                  description: Bad request - invalid input
-                400_Response_2:
-                  value:
-                    error: Bad request
-                    message: Can not transfer to self
-                    status_code: 400
-                  summary: 400 Response
-                  description: Bad request - cannot transfer to self
-                400_Response_3:
-                  value:
-                    error: Bad request
-                    message: Insufficient funds
-                    status_code: 400
-                  summary: 400 Response
-                  description: Bad request - insufficient funds
-                400_Response_4:
-                  value:
-                    error: Bad request
-                    message: Scheduled time must be in the future
-                    status_code: 400
-                  summary: 400 Response
-                  description: Bad request - scheduled time must be in future
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: unauthorized
-                message: Missing or invalid authorization token
-                status_code: 401
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: Wallet not found
-                message: Wallet not found
-                status_code: 404
-      requestBody:
-        $ref: '#/components/requestBodies/create_transfer'
-      security:
-        - create_transfer: []
-    get:
-      summary: Get transfers
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_transfers_get_transfers_yml
-      description: ''
-      tags:
-        - Transfers
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  transfers:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        from_wallet_id:
-                          type: string
-                        from_user:
-                          type: object
-                          properties:
-                            id:
-                              type: string
-                            full_name:
-                              type: string
-                        to_wallet_id:
-                          type: string
-                        to_user:
-                          type: object
-                          properties:
-                            id:
-                              type: string
-                            full_name:
-                              type: string
-                        amount_in_piastres:
-                          type: integer
-                        direction:
-                          type: string
-                        status:
-                          type: string
-                        note:
-                          type: string
-                        created_at:
-                          type: string
-              examples:
-                200_Response:
-                  value:
-                    transfers:
-                      - id: 123e4567-e89b-12d3-a456-426614174001
-                        from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
-                        from_user:
-                          id: 123e4567-e89b-12d3-a456-426614174000
-                          full_name: Alice Smith
-                        to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
-                        to_user:
-                          id: 123e4567-e89b-12d3-a456-426614174003
-                          full_name: John Doe
-                        amount_in_piastres: 5000
-                        direction: debit
-                        status: completed
-                        note: Dinner split
-                        created_at: '2024-01-15T10:30:00Z'
-                      - id: 123e4567-e89b-12d3-a456-426614174004
-                        from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
-                        from_user:
-                          id: 123e4567-e89b-12d3-a456-426614174000
-                          full_name: Alice Smith
-                        to_wallet_id: 123e4567-e89b-12d3-a456-426614174005
-                        to_user:
-                          id: 123e4567-e89b-12d3-a456-426614174006
-                          full_name: Jane Smith
-                        amount_in_piastres: 3000
-                        direction: credit
-                        status: completed
-                        note: Lunch split
-                        created_at: '2024-01-16T14:20:00Z'
-                  summary: 200 Response
-                  description: Transfers retrieved successfully
-                example:
-                  value:
-                    transfers:
-                      - id: 123e4567-e89b-12d3-a456-426614174001
-                        from_wallet_id: 023e4567-e89b-12d3-a456-426614174000
-                        from_user:
-                          id: 023e4567-e89b-12d3-a456-426614174000
-                          full_name: Alice Smith
-                        to_wallet_id: 223e4567-e89b-12d3-a456-426614174002
-                        to_user:
-                          id: 323e4567-e89b-12d3-a456-426614174003
-                          full_name: John Doe
-                        amount_in_piastres: 5000
-                        direction: debit
-                        status: completed
-                        note: Dinner split
-                        created_at: '2024-01-15T10:30:00Z'
-                      - id: 423e4567-e89b-12d3-a456-426614174004
-                        from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
-                        from_user:
-                          id: 123e4567-e89b-12d3-a456-426614174000
-                          full_name: Alice Smith
-                        to_wallet_id: 523e4567-e89b-12d3-a456-426614174005
-                        to_user:
-                          id: 623e4567-e89b-12d3-a456-426614174006
-                          full_name: Jane Smith
-                        amount_in_piastres: 3000
-                        direction: credit
-                        status: completed
-                        note: Lunch split
-                        created_at: '2024-01-16T14:20:00Z'
-                  summary: example
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: unauthorized
-                message: Missing or invalid authorization token
-                status_code: 401
-      security:
-        - get_transfers: []
-  /transfers/:id:
-    get:
-      summary: Get transfer by ID
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_transfers_get_transfer_by_id_yml
-      description: ''
-      tags:
-        - Transfers
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  transfer:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                      from_wallet_id:
-                        type: string
-                      from_user:
-                        type: object
-                        properties:
-                          id:
-                            type: string
-                          full_name:
-                            type: string
-                      to_wallet_id:
-                        type: string
-                      to_user:
-                        type: object
-                        properties:
-                          id:
-                            type: string
-                          full_name:
-                            type: string
-                      amount_in_piastres:
-                        type: integer
-                      direction:
-                        type: string
-                      status:
-                        type: string
-                      note:
-                        type: string
-                      created_at:
-                        type: string
-              examples:
-                200_Response:
-                  value:
-                    transfer:
-                      id: 123e4567-e89b-12d3-a456-426614174001
-                      from_wallet_id: 123e4567-e89b-12d3-a456-426614174000
-                      from_user:
-                        id: 123e4567-e89b-12d3-a456-426614174000
-                        full_name: Alice Smith
-                      to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
-                      to_user:
-                        id: 123e4567-e89b-12d3-a456-426614174003
-                        full_name: John Doe
-                      amount_in_piastres: 5000
-                      direction: credit
-                      status: completed
-                      note: Dinner split
-                      created_at: '2024-01-15T10:30:00Z'
-                  summary: 200 Response
-                  description: Transfer retrieved successfully
-                example:
-                  value:
-                    transfer:
-                      id: 123e4567-e89b-12d3-a456-426614174001
-                      from_wallet_id: 023e4567-e89b-12d3-a456-426614174000
-                      from_user:
-                        id: 023e4567-e89b-12d3-a456-426614174000
-                        full_name: Alice Smith
-                      to_wallet_id: 223e4567-e89b-12d3-a456-426614174002
-                      to_user:
-                        id: 323e4567-e89b-12d3-a456-426614174003
-                        full_name: John Doe
-                      amount_in_piastres: 5000
-                      direction: credit
-                      status: completed
-                      note: Dinner split
-                      created_at: '2024-01-15T10:30:00Z'
-                  summary: example
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: Bad request
-                message: invalid id
-                status_code: 400
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: unauthorized
-                message: Missing or invalid authorization token
-                status_code: 401
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: Forbidden
-                message: Transfer belongs to another user
-                status_code: 403
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: Transfer was not found
-                message: Transfer was not found
-                status_code: 404
-      parameters:
-        - name: id
-          in: path
-          description: ''
-          required: true
-          schema:
-            type: string
-      security:
-        - get_transfer_by_id: []
-  /transfers/scheduled/:
-    get:
-      summary: Get scheduled transfers
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_transfers_scheduled_get_scheduled_transfers_yml
-      description: ''
-      tags:
-        - Transfers
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  scheduled_transfers:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        transfer_id:
-                          type: string
-                        scheduled_at:
-                          type: string
-                        executed_at:
-                          type: string
-                          nullable: true
-                        deleted_at:
-                          type: string
-                          nullable: true
-                        created_at:
-                          type: string
-              examples:
-                200_Response:
-                  value:
-                    scheduled_transfers:
-                      - id: 123e4567-e89b-12d3-a456-426614174001
-                        transfer_id: 123e4567-e89b-12d3-a456-426614174002
-                        scheduled_at: '2024-01-20T10:00:00Z'
-                        executed_at: null
-                        deleted_at: null
-                        created_at: '2024-01-15T10:30:00Z'
-                  summary: 200 Response
-                  description: Scheduled transfers retrieved successfully
-                example:
-                  value:
-                    scheduled_transfers:
-                      - id: 123e4567-e89b-12d3-a456-426614174001
-                        transfer_id: 223e4567-e89b-12d3-a456-426614174002
-                        scheduled_at: '2024-01-20T10:00:00Z'
-                        executed_at: null
-                        deleted_at: null
-                        created_at: '2024-01-15T10:30:00Z'
-                  summary: example
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: unauthorized
-                message: Missing or invalid authorization token
-                status_code: 401
-      security:
-        - get_scheduled_transfers: []
-  /transfers/scheduled/:id:
-    delete:
-      summary: Cancel scheduled transfer
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_transfers_scheduled_cancel_scheduled_transfer_yml
-      description: ''
-      tags:
-        - Transfers
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  cancelled_id:
-                    type: string
-              examples:
-                200_Response:
-                  value:
-                    cancelled_id: 123e4567-e89b-12d3-a456-426614174001
-                  summary: 200 Response
-                  description: Scheduled transfer cancelled successfully
-                example:
-                  value:
-                    cancelled_id: 123e4567-e89b-12d3-a456-426614174001
-                  summary: example
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              examples:
-                400_Response:
-                  value:
-                    error: Bad request
-                    message: invalid id
-                    status_code: 400
-                  summary: 400 Response
-                  description: Bad request - invalid UUID
-                400_Response_2:
-                  value:
-                    error: Bad request
-                    message: Transfer already executed
-                    status_code: 400
-                  summary: 400 Response
-                  description: Bad request - transfer already executed
-                400_Response_3:
-                  value:
-                    error: Bad request
-                    message: Too late to cancel transfer
-                    status_code: 400
-                  summary: 400 Response
-                  description: Bad request - too late to cancel
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: unauthorized
-                message: Missing or invalid authorization token
-                status_code: 401
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: Forbidden
-                message: Transfer belongs to another user
-                status_code: 403
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: Transfer was not found
-                message: Transfer was not found
-                status_code: 404
-      parameters:
-        - name: id
-          in: path
-          description: ''
-          required: true
-          schema:
-            type: string
-      security:
-        - cancel_scheduled_transfer: []
   /users?name=John:
     get:
       summary: Search users
@@ -1009,104 +368,13 @@ paths:
           example: John
       security:
         - search_users: []
-  /wallet/payments:
+  /users/me:
     get:
-      summary: Get payment history
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_wallet_get_payments_yml
-      description: ''
+      summary: Get my profile and balance
+      operationId: get_me
+      description: Replaces GET /wallet/{userId} — the balance now lives on the user.
       tags:
-        - Wallet
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                    amount:
-                      type: integer
-                    type:
-                      type: string
-                    direction:
-                      type: string
-                    status:
-                      type: string
-                    description:
-                      type: string
-                    created_at:
-                      type: string
-              examples:
-                200_Response:
-                  value:
-                    - id: 123e4567-e89b-12d3-a456-426614174001
-                      amount: 5000
-                      type: credit
-                      direction: incoming
-                      status: completed
-                      description: Wallet top-up via Stripe
-                      created_at: '2024-01-15T10:30:00Z'
-                  summary: 200 Response
-                  description: Payment history retrieved successfully
-                example:
-                  value:
-                    - id: 123e4567-e89b-12d3-a456-426614174001
-                      amount: 5000
-                      type: debit
-                      direction: outgoing
-                      status: completed
-                      description: Wallet top-up via Stripe
-                      created_at: '2024-01-15T10:30:00Z'
-                  summary: example
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: unauthorized
-                message: Missing or invalid authorization token
-                status_code: 401
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: not found
-                message: Wallet for this user was not found
-                status_code: 404
-      security:
-        - get_payments: []
-  /wallet/{userId}:
-    get:
-      summary: Get wallet by user ID
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_wallet_get_wallet_yml
-      description: ''
-      tags:
-        - Wallet
+        - Users
       responses:
         '200':
           description: OK
@@ -1117,84 +385,40 @@ paths:
                 properties:
                   id:
                     type: string
-                  user_id:
+                  email:
+                    type: string
+                  full_name:
                     type: string
                   balance:
                     type: integer
                   created_at:
                     type: string
               example:
-                id: 123e4567-e89b-12d3-a456-426614174001
-                user_id: 123e4567-e89b-12d3-a456-426614174000
+                id: 123e4567-e89b-12d3-a456-426614174000
+                email: john@gmail.com
+                full_name: John Doe
                 balance: 100000
                 created_at: '2024-01-15T10:30:00Z'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: bad request
-                message: Bad Request
-                status_code: 400
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
+                $ref: '#/components/schemas/error_response'
               example:
                 error: unauthorized
-                message: Unauthorized
                 status_code: 401
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
-              example:
-                error: not found
-                message: Wallet for this user was not found
-                status_code: 404
-      parameters:
-        - name: userId
-          in: path
-          description: ''
-          required: true
-          schema:
-            type: string
       security:
-        - get_wallet: []
-    patch:
-      summary: Top up wallet
-      operationId: >-
-        home_joe-arch_projects_go_nexus_docs_bruno_nexuspay_collections_nexusapii_wallet_top_up_wallet_yml
-      description: ''
+        - get_me: []
+  /transactions:
+    get:
+      summary: Get my transactions
+      operationId: get_transactions
+      description: >-
+        Every transaction the caller is on either side of, newest first, with the
+        counterparty's name and a direction field.
       tags:
-        - Wallet
+        - Transactions
       responses:
         '200':
           description: OK
@@ -1203,64 +427,347 @@ paths:
               schema:
                 type: object
                 properties:
-                  client_secret:
-                    type: string
-                  amount:
-                    type: integer
-                  currency:
-                    type: string
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/transaction'
+              example:
+                transactions:
+                  - id: 123e4567-e89b-12d3-a456-426614174001
+                    sender:
+                      id: 123e4567-e89b-12d3-a456-426614174000
+                      full_name: John Doe
+                    receiver:
+                      id: 123e4567-e89b-12d3-a456-426614174002
+                      full_name: Jane Roe
+                    amount_in_piastres: 5000
+                    direction: debit
+                    status: completed
+                    note: Dinner split
+                    sender_category: food
+                    scheduled_at: '2024-01-15T10:30:00Z'
+                    created_at: '2024-01-15T10:30:00Z'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: unauthorized
+                status_code: 401
+      security:
+        - get_transactions: []
+    post:
+      summary: Create transaction
+      operationId: create_transaction
+      description: >-
+        Transfers money to another user. With scheduled_at set the row is stored
+        as 'scheduled' and the scheduler executes it when it comes due;
+        without it the transfer is committed as 'crediting' and completed
+        immediately, so a crash mid-flight leaves a row the sweeper can finish.
+      tags:
+        - Transactions
+      requestBody:
+        $ref: '#/components/requestBodies/create_transaction'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/transaction'
               examples:
-                200_Response:
+                immediate:
                   value:
-                    client_secret: pi_test123_secret_abc
-                    amount: 5000
-                    currency: usd
-                  summary: 200 Response
-                  description: Wallet topped up successfully
-                example:
+                    id: 123e4567-e89b-12d3-a456-426614174001
+                    sender:
+                      id: 123e4567-e89b-12d3-a456-426614174000
+                      full_name: John Doe
+                    receiver:
+                      id: 123e4567-e89b-12d3-a456-426614174002
+                      full_name: Jane Roe
+                    amount_in_piastres: 5000
+                    status: completed
+                    note: Dinner split
+                    created_at: '2024-01-15T10:30:00Z'
+                  summary: Immediate transfer
+                scheduled:
                   value:
-                    client_secret: pi_test123_secret_abc
-                    amount: 5000
-                    currency: usd
-                  summary: example
+                    id: 123e4567-e89b-12d3-a456-426614174001
+                    sender:
+                      id: 123e4567-e89b-12d3-a456-426614174000
+                      full_name: John Doe
+                    receiver:
+                      id: 123e4567-e89b-12d3-a456-426614174002
+                      full_name: Jane Roe
+                    amount_in_piastres: 5000
+                    status: scheduled
+                    note: Rent
+                    scheduled_at: '2024-02-01T09:00:00Z'
+                    created_at: '2024-01-15T10:30:00Z'
+                  summary: Scheduled transfer
         '400':
           description: Bad Request
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/error_response'
+              examples:
+                too_low:
+                  value:
+                    error: amount is too low, must be at least 10 EGP (1000 piastres)
+                    status_code: 400
+                  summary: Amount below the minimum
+                self_transfer:
+                  value:
+                    error: Can not transfer to self
+                    status_code: 400
+                  summary: Sender equals receiver
+                insufficient:
+                  value:
+                    error: Insufficient funds
+                    status_code: 400
+                  summary: Insufficient funds
+                not_future:
+                  value:
+                    error: Scheduled time must be in the future
+                    status_code: 400
+                  summary: scheduled_at in the past
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: unauthorized
+                status_code: 401
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: User was not found
+                status_code: 404
+      security:
+        - create_transaction: []
+  /transactions/topup:
+    post:
+      summary: Top up
+      operationId: top_up
+      description: >-
+        Creates a Stripe PaymentIntent and an 'awaiting_payment' transaction sent
+        by the Stripe system user. No balance changes here — the credit only
+        happens when the payment_intent.succeeded webhook lands.
+      tags:
+        - Transactions
+      requestBody:
+        $ref: '#/components/requestBodies/top_up'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
                 type: object
                 properties:
-                  error:
+                  transaction_id:
                     type: string
-                  message:
-                    type: string
-                  status_code:
+                  amount_in_piastres:
                     type: integer
+                  status:
+                    type: string
+                  provider_payment_id:
+                    type: string
+                  client_secret:
+                    type: string
               example:
-                error: invalid input
-                message: Amount must be a positive integer
+                transaction_id: 123e4567-e89b-12d3-a456-426614174001
+                amount_in_piastres: 5000
+                status: awaiting_payment
+                provider_payment_id: pi_test123
+                client_secret: pi_test123_secret_abc
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: amount is too low, must be at least 10 EGP (1000 piastres)
                 status_code: 400
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  status_code:
-                    type: integer
+                $ref: '#/components/schemas/error_response'
               example:
                 error: unauthorized
-                message: Missing or invalid authorization token
                 status_code: 401
-      requestBody:
-        $ref: '#/components/requestBodies/top_up_wallet'
       security:
-        - top_up_wallet: []
+        - top_up: []
+  /transactions/{id}:
+    get:
+      summary: Get transaction by ID
+      operationId: get_transaction_by_id
+      description: ''
+      tags:
+        - Transactions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction:
+                    $ref: '#/components/schemas/transaction'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Transaction belongs to another user
+                status_code: 403
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Transaction was not found
+                status_code: 404
+      parameters:
+        - name: id
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
+      security:
+        - get_transaction_by_id: []
+    delete:
+      summary: Cancel scheduled transaction
+      operationId: cancel_transaction
+      description: >-
+        Deletes the row while it is still 'scheduled'. This races the scheduler
+        correctly: the delete blocks on the scheduler's row lock and then affects
+        zero rows, so whichever lands first wins and the money can never move twice.
+      tags:
+        - Transactions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled_id:
+                    type: string
+              example:
+                cancelled_id: 123e4567-e89b-12d3-a456-426614174001
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Transaction belongs to another user
+                status_code: 403
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Transaction was not found
+                status_code: 404
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Transaction is no longer scheduled
+                status_code: 409
+      parameters:
+        - name: id
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
+      security:
+        - cancel_transaction: []
+  /transactions/{id}/category:
+    patch:
+      summary: Set my expense category
+      operationId: set_transaction_category
+      description: >-
+        Sets sender_category or receiver_category depending on which side of the
+        transaction the caller is on.
+      tags:
+        - Transactions
+      requestBody:
+        $ref: '#/components/requestBodies/set_transaction_category'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction:
+                    $ref: '#/components/schemas/transaction'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Invalid expense category
+                status_code: 400
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Transaction belongs to another user
+                status_code: 403
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error_response'
+              example:
+                error: Transaction was not found
+                status_code: 404
+      parameters:
+        - name: id
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
+      security:
+        - set_transaction_category: []
   /webhook/stripe:
     post:
       summary: Stripe webhook
@@ -1325,6 +832,65 @@ servers:
     description: Production server
 components:
   schemas:
+    error_response:
+      type: object
+      properties:
+        error:
+          type: string
+        status_code:
+          type: integer
+    user_mini:
+      type: object
+      properties:
+        id:
+          type: string
+        full_name:
+          type: string
+    transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        sender:
+          $ref: '#/components/schemas/user_mini'
+        receiver:
+          $ref: '#/components/schemas/user_mini'
+        amount_in_piastres:
+          type: integer
+        direction:
+          type: string
+          enum:
+            - debit
+            - credit
+          description: Which side of the transaction the caller is on.
+        status:
+          type: string
+          enum:
+            - awaiting_payment
+            - crediting
+            - scheduled
+            - completed
+            - failed
+        note:
+          type: string
+        sender_category:
+          $ref: '#/components/schemas/expense_category'
+        receiver_category:
+          $ref: '#/components/schemas/expense_category'
+        scheduled_at:
+          type: string
+        created_at:
+          type: string
+    expense_category:
+      type: string
+      enum:
+        - food
+        - transport
+        - bills
+        - shopping
+        - income
+        - topup
+        - other
     login_user:
       type: object
       properties:
@@ -1348,24 +914,39 @@ components:
         email: john@gmail.com
         password: password
         full_name: John Doe
-    create_transfer:
+    create_transaction:
       type: object
       properties:
-        to_wallet_id:
+        receiver_id:
           type: string
         amount_in_piastres:
           type: integer
+          minimum: 1000
         note:
           type: string
+        category:
+          $ref: '#/components/schemas/expense_category'
+        scheduled_at:
+          type: string
+          description: When set, the transaction is stored as 'scheduled' instead of executing now.
       example:
-        to_wallet_id: 123e4567-e89b-12d3-a456-426614174002
+        receiver_id: 123e4567-e89b-12d3-a456-426614174002
         amount_in_piastres: 5000
         note: Dinner split
-    top_up_wallet:
+        category: food
+    set_transaction_category:
+      type: object
+      properties:
+        category:
+          $ref: '#/components/schemas/expense_category'
+      example:
+        category: food
+    top_up:
       type: object
       properties:
         amount_in_piastres:
           type: integer
+          minimum: 1000
       example:
         amount_in_piastres: 5000
     stripe_webhook:
@@ -1413,18 +994,25 @@ components:
             $ref: '#/components/schemas/register_a_new_user'
       description: ''
       required: true
-    create_transfer:
+    create_transaction:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/create_transfer'
+            $ref: '#/components/schemas/create_transaction'
       description: ''
       required: true
-    top_up_wallet:
+    set_transaction_category:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/top_up_wallet'
+            $ref: '#/components/schemas/set_transaction_category'
+      description: ''
+      required: true
+    top_up:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/top_up'
       description: ''
       required: true
     stripe_webhook:
@@ -1441,30 +1029,27 @@ components:
     test_authentication:
       type: http
       scheme: bearer
-    create_transfer:
-      type: http
-      scheme: bearer
-    get_transfers:
-      type: http
-      scheme: bearer
-    get_transfer_by_id:
-      type: http
-      scheme: bearer
-    get_scheduled_transfers:
-      type: http
-      scheme: bearer
-    cancel_scheduled_transfer:
-      type: http
-      scheme: bearer
     search_users:
       type: http
       scheme: bearer
-    get_payments:
+    get_me:
       type: http
       scheme: bearer
-    get_wallet:
+    get_transactions:
       type: http
       scheme: bearer
-    top_up_wallet:
+    create_transaction:
+      type: http
+      scheme: bearer
+    get_transaction_by_id:
+      type: http
+      scheme: bearer
+    cancel_transaction:
+      type: http
+      scheme: bearer
+    set_transaction_category:
+      type: http
+      scheme: bearer
+    top_up:
       type: http
       scheme: bearer

@@ -11,38 +11,36 @@ import (
 )
 
 type Querier interface {
-	AddToBalance(ctx context.Context, arg AddToBalanceParams) (Wallet, error)
-	CancelScheduledTransfer(ctx context.Context, id pgtype.UUID) (ScheduledTransfer, error)
-	CreateScheduledTransfer(ctx context.Context, arg CreateScheduledTransferParams) (ScheduledTransfer, error)
-	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (CreateTransactionRow, error)
-	CreateTransfer(ctx context.Context, arg CreateTransferParams) (Transfer, error)
+	// Races the scheduler correctly: this delete blocks on the scheduler's row
+	// lock and then affects zero rows. Whichever lands first wins.
+	CancelScheduledTransaction(ctx context.Context, arg CancelScheduledTransactionParams) (Transaction, error)
+	ClaimDueTransactions(ctx context.Context, limit int32) ([]Transaction, error)
+	ClaimStuckCrediting(ctx context.Context, limit int32) ([]Transaction, error)
+	CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
-	CreateWallet(ctx context.Context, arg CreateWalletParams) (CreateWalletRow, error)
-	DeductFromBalance(ctx context.Context, arg DeductFromBalanceParams) (Wallet, error)
-	GetPendingScheduledTransfers(ctx context.Context, scheduledAt pgtype.Timestamptz) ([]ScheduledTransfer, error)
-	GetScheduledTransferById(ctx context.Context, id pgtype.UUID) (ScheduledTransfer, error)
-	GetScheduledTransferByTransferId(ctx context.Context, transferID pgtype.UUID) (ScheduledTransfer, error)
-	GetScheduledTransfersByUserId(ctx context.Context, userID pgtype.UUID) ([]ScheduledTransfer, error)
+	CreditUser(ctx context.Context, arg CreditUserParams) (User, error)
+	// Zero rows means insufficient funds. This guard, inside the money-moving
+	// transaction, is the ONLY thing enforcing sufficient funds -- a read taken
+	// outside the transaction protects nothing. The system-account carve-out lives
+	// here so callers never have to branch on it.
+	DebitUser(ctx context.Context, arg DebitUserParams) (User, error)
+	GetBalance(ctx context.Context, id pgtype.UUID) (int64, error)
 	GetTransactionById(ctx context.Context, id pgtype.UUID) (Transaction, error)
-	GetTransactionByTransferId(ctx context.Context, transferID pgtype.UUID) (Transaction, error)
-	GetTransactionsByWalletId(ctx context.Context, walletID pgtype.UUID) ([]Transaction, error)
-	GetTransferById(ctx context.Context, id pgtype.UUID) (Transfer, error)
-	GetTransferByIdWithUser(ctx context.Context, id pgtype.UUID) (GetTransferByIdWithUserRow, error)
-	GetTransfersByWalletId(ctx context.Context, toWalletID pgtype.UUID) ([]Transfer, error)
-	GetTransfersByWalletIdWithUser(ctx context.Context, toWalletID pgtype.UUID) ([]GetTransfersByWalletIdWithUserRow, error)
+	GetTransactionByIdWithUsers(ctx context.Context, id pgtype.UUID) (GetTransactionByIdWithUsersRow, error)
+	GetTransactionsByUserId(ctx context.Context, senderID pgtype.UUID) ([]GetTransactionsByUserIdRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserByName(ctx context.Context, fullName string) ([]User, error)
 	GetUserByRefreshToken(ctx context.Context, refreshToken pgtype.Text) (User, error)
-	GetWalletById(ctx context.Context, id pgtype.UUID) (Wallet, error)
-	GetWalletByUserId(ctx context.Context, userID pgtype.UUID) (Wallet, error)
-	MarkScheduledTransferExecuted(ctx context.Context, id pgtype.UUID) (ScheduledTransfer, error)
+	// The whole rewrite in one statement: the status guard makes the update claim
+	// the row, and the row lock serializes concurrent callers. Zero rows
+	// (pgx.ErrNoRows) means somebody else already did this work.
+	GuardedSetStatus(ctx context.Context, arg GuardedSetStatusParams) (Transaction, error)
 	RevokeRefreshToken(ctx context.Context, id pgtype.UUID) error
+	SetReceiverCategory(ctx context.Context, arg SetReceiverCategoryParams) (Transaction, error)
+	SetSenderCategory(ctx context.Context, arg SetSenderCategoryParams) (Transaction, error)
 	SoftDeleteUser(ctx context.Context, id pgtype.UUID) error
 	UpdateRefreshToken(ctx context.Context, arg UpdateRefreshTokenParams) error
-	UpdateTransactionStatus(ctx context.Context, arg UpdateTransactionStatusParams) (Transaction, error)
-	UpdateTransferStatus(ctx context.Context, arg UpdateTransferStatusParams) (Transfer, error)
-	UpdateTransferWithTransactionId(ctx context.Context, arg UpdateTransferWithTransactionIdParams) (Transfer, error)
 	UpdateUserDetails(ctx context.Context, arg UpdateUserDetailsParams) (User, error)
 }
 

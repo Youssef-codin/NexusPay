@@ -27,10 +27,8 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/payment/stripe"
 	"github.com/Youssef-codin/NexusPay/internal/security"
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
-	"github.com/Youssef-codin/NexusPay/internal/transfers"
 	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
-	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
 	httprateredis "github.com/go-chi/httprate-redis"
@@ -47,8 +45,12 @@ import (
 
 const (
 	serverPort       = "3002"
-	testUserEmail    = "integration-test@example.com"
 	testUserPassword = "TestPassword123!"
+
+	// offlineWebhookSecret is used by setupOffline. Tests that synthesise their
+	// own signed events only need the app and the test to agree on a secret --
+	// the Stripe CLI is only required when a real PaymentIntent is involved.
+	offlineWebhookSecret = "whsec_integration_test_secret"
 )
 
 var (
@@ -71,6 +73,10 @@ type testApp struct {
 	server     *http.Server
 	addr       string
 	httpClient *http.Client
+
+	// Exposed so tests can drive the workers directly instead of waiting on cron.
+	txService transactions.IService
+	scheduler *transactions.Scheduler
 }
 
 func TestMain(m *testing.M) {
@@ -315,21 +321,37 @@ func cleanup(ctx context.Context) {
 
 // setup starts all dependencies, the Stripe CLI (to get the real webhook secret),
 // and then the test HTTP server — in that order so the handler is created with
-// the actual signing secret.
+// the actual signing secret. Use it only for tests that create a real
+// PaymentIntent; everything else should use setupOffline.
 func setup() error {
+	return setupWith(true)
+}
+
+// setupOffline is setup without the Stripe CLI: the app is built with a fixed
+// signing secret that the test signs its own events with. Most money-safety
+// tests seed balances directly and never touch the Stripe API, so requiring a
+// live account for them only makes the suite fragile.
+func setupOffline() error {
+	return setupWith(false)
+}
+
+func setupWith(withStripeCLI bool) error {
 	mu.Lock()
 
 	if projectRoot, err := findProjectRoot(); err == nil {
 		godotenv.Load(projectRoot + "/.env")
+		godotenv.Load(projectRoot + "/.env.local")
 	}
 
-	if err := checkStripeCLI(); err != nil {
-		mu.Unlock()
-		return err
-	}
-	if err := checkStripeKey(); err != nil {
-		mu.Unlock()
-		return err
+	if withStripeCLI {
+		if err := checkStripeCLI(); err != nil {
+			mu.Unlock()
+			return err
+		}
+		if err := checkStripeKey(); err != nil {
+			mu.Unlock()
+			return err
+		}
 	}
 
 	ctx := context.Background()
@@ -346,10 +368,14 @@ func setup() error {
 
 	// Start the Stripe CLI before the app so we have the signing secret ready
 	// when we construct the webhook handler.
-	if err := startStripeCLI(); err != nil {
-		cleanup(ctx)
-		mu.Unlock()
-		return fmt.Errorf("start stripe cli: %w", err)
+	if withStripeCLI {
+		if err := startStripeCLI(); err != nil {
+			cleanup(ctx)
+			mu.Unlock()
+			return fmt.Errorf("start stripe cli: %w", err)
+		}
+	} else {
+		webhookSecret = offlineWebhookSecret
 	}
 
 	if _, err := setupTestApp(); err != nil {
@@ -363,6 +389,10 @@ func setup() error {
 
 func teardown() {
 	ctx := context.Background()
+	if testAppInstance != nil {
+		testAppInstance.close()
+		testAppInstance = nil
+	}
 	cleanup(ctx)
 	mu.Unlock()
 }
@@ -375,37 +405,38 @@ func setupTestApp() (*testApp, error) {
 
 	userCache := redisDb.NewUsers(redisClient)
 
-	authRepo := auth.NewRepo(database)
-
-	transactionRepo := transactions.NewRepo(database)
-	transactionService := transactions.NewService(transactionRepo)
-
 	stripeAPIKey := os.Getenv("STRIPE_SECRET_KEY")
 	paymentService := stripe.NewService(stripeAPIKey)
 
-	walletRepo := wallet.NewRepo(database)
-	walletService := wallet.NewService(database, walletRepo, transactionService, paymentService)
-	walletHandler := wallet.NewHandler(walletService)
-
-	transfersRepo := transfers.NewRepo(database)
-	transfersService := transfers.NewService(database, transfersRepo, walletService, transactionService)
-	transfersHandler := transfers.NewHandler(transfersService)
-
-	authService := auth.NewService(database, authRepo, userCache, authenticator, walletService)
+	authRepo := auth.NewRepo(database)
+	authService := auth.NewService(database, authRepo, userCache, authenticator)
 	authHandler := auth.NewHandler(authService, authenticator)
 
 	userRepo := users.NewRepo(database)
 	userService := users.NewService(userRepo, userCache)
-	_ = users.NewHandler(userService)
+	userHandler := users.NewHandler(userService)
 
-	webhookService := stripe.NewWebhookService(database, walletService, transactionService)
+	transactionRepo := transactions.NewRepo(database)
+	transactionService := transactions.NewService(
+		database,
+		transactionRepo,
+		userService,
+		paymentService,
+	)
+	transactionHandler := transactions.NewHandler(transactionService)
+
+	// Deliberately not Start()ed: tests drive RunOnce/SweepOnce themselves so
+	// nothing races with cron.
+	scheduler := transactions.NewScheduler(transactionService, transactionRepo)
+
+	webhookService := stripe.NewWebhookService(transactionService)
 	webhookHandler := stripe.NewWebhookHandler(webhookSecret, webhookService)
 
 	r := chi.NewRouter()
 
 	r.Group(func(rpublic chi.Router) {
 		rpublic.Use(httprate.Limit(
-			100,
+			1000,
 			time.Minute,
 			httprate.WithKeyByIP(),
 			httprateredis.WithRedisLimitCounter(&httprateredis.Config{
@@ -428,14 +459,19 @@ func setupTestApp() (*testApp, error) {
 		rprotected.Use(jwtauth.Verifier(authenticator.TokenAuth))
 		rprotected.Use(authenticator.AuthHandler())
 
-		rprotected.Route("/wallet", func(r chi.Router) {
-			r.Get("/{userId}", api.Wrap(walletHandler.GetByUserId))
-			r.Patch("/", api.Wrap(walletHandler.TopUp))
+		rprotected.Route("/users", func(r chi.Router) {
+			r.Get("/", api.Wrap(userHandler.SearchByName))
+			r.Get("/me", api.Wrap(userHandler.GetMe))
 		})
 
-		rprotected.Route("/transfers", func(r chi.Router) {
-			r.Get("/", api.Wrap(transfersHandler.GetTransfers))
-			r.Post("/", api.Wrap(transfersHandler.CreateTransfer))
+		rprotected.Route("/transactions", func(r chi.Router) {
+			r.Get("/", api.Wrap(transactionHandler.List))
+			r.Post("/", api.Wrap(transactionHandler.Create))
+			r.Post("/topup", api.Wrap(transactionHandler.TopUp))
+
+			r.Get("/{id}", api.Wrap(transactionHandler.GetByID))
+			r.Delete("/{id}", api.Wrap(transactionHandler.Cancel))
+			r.Patch("/{id}/category", api.Wrap(transactionHandler.SetCategory))
 		})
 	})
 
@@ -454,15 +490,44 @@ func setupTestApp() (*testApp, error) {
 		}
 	}()
 
-	time.Sleep(500 * time.Millisecond)
-
-	testAppInstance = &testApp{
+	app := &testApp{
 		server:     server,
 		addr:       "http://localhost:" + serverPort,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
+		txService:  transactionService,
+		scheduler:  scheduler,
 	}
 
+	// Poll rather than sleep. Every test rebinds the same port, so a fixed sleep
+	// races with the previous server releasing it and shows up as an EOF on the
+	// first request.
+	if err := app.waitReady(10 * time.Second); err != nil {
+		server.Close()
+		return nil, err
+	}
+
+	testAppInstance = app
+
 	return testAppInstance, nil
+}
+
+// waitReady blocks until /health answers from the server we just started.
+func (app *testApp) waitReady(timeout time.Duration) error {
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(app.addr + "/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusNoContent {
+				return nil
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	return fmt.Errorf("test server never became ready on port %s", serverPort)
 }
 
 func parseRedisAddr() (string, string) {
@@ -489,9 +554,14 @@ func (app *testApp) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	app.server.Shutdown(ctx)
+	// Shutdown can return with connections still draining; the next test rebinds
+	// this port immediately, so drop them.
+	app.server.Close()
 }
 
 func (app *testApp) registerUser(t *testing.T, email, password string) string {
+	t.Helper()
+
 	reqBody := map[string]string{
 		"email":     email,
 		"password":  password,
@@ -510,13 +580,21 @@ func (app *testApp) registerUser(t *testing.T, email, password string) string {
 		t.Fatalf("register failed with status %d, body: %s", resp.StatusCode, rawBody)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	json.NewDecoder(resp.Body).Decode(&result)
 
 	return result["jwt_token"].(string)
 }
 
+// newUser registers a fresh user and returns its token.
+func (app *testApp) newUser(t *testing.T, prefix string) string {
+	t.Helper()
+	return app.registerUser(t, fmt.Sprintf("%s-%s@example.com", prefix, uuid.New()), testUserPassword)
+}
+
 func (app *testApp) loginUser(t *testing.T, email, password string) string {
+	t.Helper()
+
 	reqBody := map[string]string{
 		"email":    email,
 		"password": password,
@@ -533,7 +611,7 @@ func (app *testApp) loginUser(t *testing.T, email, password string) string {
 		t.Fatalf("login failed with status %d", resp.StatusCode)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	json.NewDecoder(resp.Body).Decode(&result)
 
 	return result["jwt_token"].(string)
@@ -549,81 +627,122 @@ func (app *testApp) confirmPayment(paymentIntentID string) error {
 	return err
 }
 
-func userIDFromToken(token string) string {
+func userIDFromToken(token string) uuid.UUID {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return ""
+		return uuid.Nil
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return ""
+		return uuid.Nil
 	}
-	var claims map[string]interface{}
+	var claims map[string]any
 	json.Unmarshal(payload, &claims)
 	sub, _ := claims["sub"].(string)
-	return sub
+	id, _ := uuid.Parse(sub)
+	return id
 }
 
-func (app *testApp) getWallet(t *testing.T, token string) map[string]interface{} {
-	userID := userIDFromToken(token)
-	req, err := http.NewRequest("GET", app.addr+"/wallet/"+userID, nil)
-	if err != nil {
-		t.Fatalf("get wallet request failed: %v", err)
+// do issues an authenticated request and returns the decoded body plus status.
+func (app *testApp) do(
+	t *testing.T,
+	method, path, token string,
+	payload any,
+) (map[string]any, int, string) {
+	t.Helper()
+
+	var body io.Reader
+	if payload != nil {
+		raw, _ := json.Marshal(payload)
+		body = bytes.NewBuffer(raw)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := app.httpClient.Do(req)
+	req, err := http.NewRequest(method, app.addr+path, body)
 	if err != nil {
-		t.Fatalf("get wallet request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-
-	return result
-}
-
-func (app *testApp) topUp(t *testing.T, token string, amount int64) (map[string]interface{}, int) {
-	result, status, _ := app.topUpWithBody(t, token, amount)
-	return result, status
-}
-
-func (app *testApp) topUpWithBody(t *testing.T, token string, amount int64) (map[string]interface{}, int, string) {
-	reqBody := map[string]interface{}{
-		"amount_in_piastres": amount,
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req, err := http.NewRequest("PATCH", app.addr+"/wallet/", bytes.NewBuffer(body))
-	if err != nil {
-		t.Fatalf("topup request failed: %v", err)
+		t.Fatalf("build %s %s: %v", method, path, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := app.httpClient.Do(req)
 	if err != nil {
-		t.Fatalf("topup request failed: %v", err)
+		t.Fatalf("%s %s failed: %v", method, path, err)
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	var result map[string]interface{}
-	json.Unmarshal(bodyBytes, &result)
+	raw, _ := io.ReadAll(resp.Body)
+	var result map[string]any
+	json.Unmarshal(raw, &result)
 
-	return result, resp.StatusCode, string(bodyBytes)
+	return result, resp.StatusCode, string(raw)
 }
 
-func (app *testApp) getWalletBalance(t *testing.T, token string) int64 {
-	w := app.getWallet(t, token)
-	if balance, ok := w["balance"].(float64); ok {
-		return int64(balance)
+func (app *testApp) getMe(t *testing.T, token string) map[string]any {
+	t.Helper()
+	result, status, raw := app.do(t, http.MethodGet, "/users/me", token, nil)
+	if status != http.StatusOK {
+		t.Fatalf("GET /users/me returned %d: %s", status, raw)
 	}
-	return 0
+	return result
 }
 
-func waitForWebhook(timeout time.Duration, checkFn func() bool) error {
+func (app *testApp) getBalance(t *testing.T, token string) int64 {
+	t.Helper()
+	me := app.getMe(t, token)
+	balance, _ := me["balance"].(float64)
+	return int64(balance)
+}
+
+// topUp calls POST /transactions/topup and returns the decoded body and status.
+func (app *testApp) topUp(t *testing.T, token string, amount int64) (map[string]any, int, string) {
+	t.Helper()
+	return app.do(t, http.MethodPost, "/transactions/topup", token, map[string]any{
+		"amount_in_piastres": amount,
+	})
+}
+
+// fund tops a user up and blocks until the Stripe webhook has credited it.
+func (app *testApp) fund(t *testing.T, token string, amount int64) {
+	t.Helper()
+
+	before := app.getBalance(t, token)
+
+	result, status, raw := app.topUp(t, token, amount)
+	if status != http.StatusOK {
+		t.Fatalf("topup failed with status %d: %s", status, raw)
+	}
+
+	paymentID, _ := result["provider_payment_id"].(string)
+	if paymentID == "" {
+		t.Fatalf("topup returned no provider_payment_id: %s", raw)
+	}
+
+	if err := app.confirmPayment(paymentID); err != nil {
+		t.Fatalf("confirm payment failed: %v", err)
+	}
+
+	if err := waitFor(30*time.Second, func() bool {
+		return app.getBalance(t, token) >= before+amount
+	}); err != nil {
+		t.Fatalf("top-up of %d never landed: %v", amount, err)
+	}
+}
+
+// transfer posts an immediate transfer and returns the status code.
+func (app *testApp) transfer(
+	t *testing.T,
+	token string,
+	to uuid.UUID,
+	amount int64,
+) (map[string]any, int, string) {
+	t.Helper()
+	return app.do(t, http.MethodPost, "/transactions", token, map[string]any{
+		"receiver_id":        to.String(),
+		"amount_in_piastres": amount,
+	})
+}
+
+func waitFor(timeout time.Duration, checkFn func() bool) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if checkFn() {
@@ -631,332 +750,35 @@ func waitForWebhook(timeout time.Duration, checkFn func() bool) error {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return fmt.Errorf("timeout waiting for webhook")
+	return fmt.Errorf("timeout waiting for condition")
 }
 
-func TestTopUp_HappyPath_Integration(t *testing.T) {
-	if err := setup(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	defer teardown()
+// assertZeroSum is the global invariant: Stripe is a system user, so every
+// transaction row nets to zero and the balances of all users must always sum
+// to zero. Every test asserts it as a post-condition.
+func assertZeroSum(t *testing.T) {
+	t.Helper()
 
-	app := testAppInstance
-
-	resp, err := app.httpClient.Get(app.addr + "/health")
+	var total int64
+	err := pgPool.QueryRow(context.Background(), "SELECT COALESCE(SUM(balance), 0) FROM users").
+		Scan(&total)
 	if err != nil {
-		t.Logf("Health check failed: %v", err)
-	} else {
-		t.Logf("Health check status: %d", resp.StatusCode)
+		t.Fatalf("sum balances: %v", err)
 	}
-
-	userEmail := fmt.Sprintf("user-%s@example.com", uuid.New().String())
-	accessToken := app.registerUser(t, userEmail, testUserPassword)
-
-	initialBalance := app.getWalletBalance(t, accessToken)
-
-	topUpAmount := int64(50000)
-	result, statusCode, body := app.topUpWithBody(t, accessToken, topUpAmount)
-	if statusCode != http.StatusOK {
-		t.Fatalf("topup failed with status %d, response: %s", statusCode, body)
+	if total != 0 {
+		t.Errorf("INVARIANT VIOLATED: SUM(balance) = %d, want 0", total)
 	}
+}
 
-	paymentID := result["provider_payment_id"].(string)
-	slog.Info("Payment created", "payment_id", paymentID)
+// statusOf reads a transaction's status straight from the database.
+func statusOf(t *testing.T, id uuid.UUID) string {
+	t.Helper()
 
-	if err := app.confirmPayment(paymentID); err != nil {
-		t.Fatalf("confirm payment failed: %v", err)
-	}
-	slog.Info("Payment confirmed, waiting for webhook...")
-
-	err = waitForWebhook(15*time.Second, func() bool {
-		current := app.getWalletBalance(t, accessToken)
-		slog.Info("Checking balance", "current", current, "expected", initialBalance+topUpAmount)
-		return current == initialBalance+topUpAmount
-	})
+	var status string
+	err := pgPool.QueryRow(context.Background(), "SELECT status FROM transactions WHERE id = $1", id).
+		Scan(&status)
 	if err != nil {
-		t.Fatalf("did not receive payment_intent.succeeded webhook: %v", err)
+		t.Fatalf("read status of %s: %v", id, err)
 	}
-
-	finalBalance := app.getWalletBalance(t, accessToken)
-	if finalBalance != initialBalance+topUpAmount {
-		t.Errorf("expected balance %d, got %d", initialBalance+topUpAmount, finalBalance)
-	}
-}
-
-func TestTopUp_PaymentFailed_Integration(t *testing.T) {
-	if err := setup(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	defer teardown()
-
-	app := testAppInstance
-
-	userEmail := fmt.Sprintf("user-%s@example.com", uuid.New().String())
-	accessToken := app.registerUser(t, userEmail, testUserPassword)
-
-	initialBalance := app.getWalletBalance(t, accessToken)
-
-	// pm_card_visa_chargeDeclined causes Stripe to decline immediately;
-	// the top-up API creates the intent but the payment never succeeds.
-	result, statusCode, _ := app.topUpWithBody(t, accessToken, 10000)
-	if statusCode == http.StatusOK {
-		paymentID, _ := result["provider_payment_id"].(string)
-		if paymentID != "" {
-			// Attempt to confirm with a declining card — Stripe will reject it.
-			params := &stripeapi.PaymentIntentConfirmParams{
-				PaymentMethod: stripeapi.String("pm_card_visa_chargeDeclined"),
-			}
-			stripeapi.Key = os.Getenv("STRIPE_SECRET_KEY")
-			paymentintent.Confirm(paymentID, params)
-		}
-
-		// Wait for the payment_intent.payment_failed webhook to fire.
-		waitForWebhook(10*time.Second, func() bool {
-			return app.getWalletBalance(t, accessToken) == initialBalance
-		})
-	}
-
-	time.Sleep(1 * time.Second)
-	finalBalance := app.getWalletBalance(t, accessToken)
-	if finalBalance != initialBalance {
-		t.Errorf("balance should remain %d after failed payment, got %d", initialBalance, finalBalance)
-	}
-}
-
-func TestTopUp_Validation_Integration(t *testing.T) {
-	if err := setup(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	defer teardown()
-
-	app := testAppInstance
-
-	userEmail := fmt.Sprintf("user-%s@example.com", uuid.New().String())
-	accessToken := app.registerUser(t, userEmail, testUserPassword)
-
-	// Amount below minimum should be rejected.
-	reqBody := map[string]interface{}{
-		"amount_in_piastres": 500,
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req, _ := http.NewRequest("PATCH", app.addr+"/wallet/", bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := app.httpClient.Do(req)
-	if err != nil {
-		t.Fatalf("topup request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400 for amount below minimum, got %d", resp.StatusCode)
-	}
-}
-
-func TestConcurrentTransfers_Integration(t *testing.T) {
-	if err := setup(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	defer teardown()
-
-	app := testAppInstance
-
-	senderEmail := fmt.Sprintf("sender-%s@example.com", uuid.New().String())
-	receiver1Email := fmt.Sprintf("receiver1-%s@example.com", uuid.New().String())
-	receiver2Email := fmt.Sprintf("receiver2-%s@example.com", uuid.New().String())
-
-	senderToken := app.registerUser(t, senderEmail, testUserPassword)
-	receiver1Token := app.registerUser(t, receiver1Email, testUserPassword)
-	receiver2Token := app.registerUser(t, receiver2Email, testUserPassword)
-
-	_, senderStatus, senderBodyStr := app.topUpWithBody(t, senderToken, 20000)
-	_, r1Status, r1BodyStr := app.topUpWithBody(t, receiver1Token, 5000)
-	_, r2Status, r2BodyStr := app.topUpWithBody(t, receiver2Token, 5000)
-
-	if senderStatus != 200 || r1Status != 200 || r2Status != 200 {
-		t.Fatalf("topup failed: sender=%d (body: %s), receiver1=%d (body: %s), receiver2=%d (body: %s)",
-			senderStatus, senderBodyStr, r1Status, r1BodyStr, r2Status, r2BodyStr)
-	}
-
-	var senderBody, r1Body, r2Body map[string]interface{}
-	json.Unmarshal([]byte(senderBodyStr), &senderBody)
-	json.Unmarshal([]byte(r1BodyStr), &r1Body)
-	json.Unmarshal([]byte(r2BodyStr), &r2Body)
-
-	senderPaymentID := senderBody["provider_payment_id"].(string)
-	r1PaymentID := r1Body["provider_payment_id"].(string)
-	r2PaymentID := r2Body["provider_payment_id"].(string)
-
-	if err := app.confirmPayment(senderPaymentID); err != nil {
-		t.Fatalf("confirm sender payment failed: %v", err)
-	}
-	if err := app.confirmPayment(r1PaymentID); err != nil {
-		t.Fatalf("confirm receiver1 payment failed: %v", err)
-	}
-	if err := app.confirmPayment(r2PaymentID); err != nil {
-		t.Fatalf("confirm receiver2 payment failed: %v", err)
-	}
-
-	// Wait for all three top-ups to land via webhook.
-	err := waitForWebhook(30*time.Second, func() bool {
-		sb := app.getWalletBalance(t, senderToken)
-		r1b := app.getWalletBalance(t, receiver1Token)
-		r2b := app.getWalletBalance(t, receiver2Token)
-		t.Logf("Waiting for top-ups... Sender: %d, R1: %d, R2: %d", sb, r1b, r2b)
-		return sb >= 20000 && r1b >= 5000 && r2b >= 5000
-	})
-	if err != nil {
-		t.Fatalf("top-ups did not complete: %v", err)
-	}
-
-	receiver1Wallet := app.getWallet(t, receiver1Token)
-	receiver2Wallet := app.getWallet(t, receiver2Token)
-	receiver1WalletID := receiver1Wallet["id"].(string)
-	receiver2WalletID := receiver2Wallet["id"].(string)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		body, _ := json.Marshal(map[string]interface{}{
-			"to_wallet_id":       receiver1WalletID,
-			"amount_in_piastres": 3000,
-		})
-		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
-		req.Header.Set("Authorization", "Bearer "+senderToken)
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := app.httpClient.Do(req)
-		if err != nil {
-			t.Logf("Transfer to receiver1 failed: %v", err)
-			return
-		}
-		defer resp.Body.Close()
-		t.Logf("Transfer to receiver1 status: %d", resp.StatusCode)
-	}()
-
-	go func() {
-		defer wg.Done()
-		body, _ := json.Marshal(map[string]interface{}{
-			"to_wallet_id":       receiver2WalletID,
-			"amount_in_piastres": 3000,
-		})
-		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
-		req.Header.Set("Authorization", "Bearer "+senderToken)
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := app.httpClient.Do(req)
-		if err != nil {
-			t.Logf("Transfer to receiver2 failed: %v", err)
-			return
-		}
-		defer resp.Body.Close()
-		t.Logf("Transfer to receiver2 status: %d", resp.StatusCode)
-	}()
-
-	wg.Wait()
-	time.Sleep(500 * time.Millisecond)
-
-	finalSenderBalance := app.getWalletBalance(t, senderToken)
-	finalReceiver1Balance := app.getWalletBalance(t, receiver1Token)
-	finalReceiver2Balance := app.getWalletBalance(t, receiver2Token)
-
-	t.Logf("Final — Sender: %d, Receiver1: %d, Receiver2: %d",
-		finalSenderBalance, finalReceiver1Balance, finalReceiver2Balance)
-
-	totalOut := 20000 - finalSenderBalance
-	totalIn := (finalReceiver1Balance - 5000) + (finalReceiver2Balance - 5000)
-
-	if totalOut != totalIn {
-		t.Errorf("ATOMICITY BUG: money out (%d) != money in (%d)", totalOut, totalIn)
-	}
-	if finalSenderBalance < 0 {
-		t.Errorf("ATOMICITY BUG: sender balance went negative: %d", finalSenderBalance)
-	}
-}
-
-func TestConcurrentTransfers_ExceedBalance_Integration(t *testing.T) {
-	if err := setup(); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	defer teardown()
-
-	app := testAppInstance
-
-	senderEmail := fmt.Sprintf("sender2-%s@example.com", uuid.New().String())
-	receiverEmail := fmt.Sprintf("receiver-%s@example.com", uuid.New().String())
-
-	senderToken := app.registerUser(t, senderEmail, testUserPassword)
-	receiverToken := app.registerUser(t, receiverEmail, testUserPassword)
-
-	// Top up sender and confirm so the balance is funded.
-	senderTopUp, senderStatus, _ := app.topUpWithBody(t, senderToken, 5000)
-	if senderStatus != http.StatusOK {
-		t.Fatalf("sender topup failed with status %d", senderStatus)
-	}
-	if err := app.confirmPayment(senderTopUp["provider_payment_id"].(string)); err != nil {
-		t.Fatalf("confirm sender payment: %v", err)
-	}
-	if err := waitForWebhook(15*time.Second, func() bool {
-		return app.getWalletBalance(t, senderToken) >= 5000
-	}); err != nil {
-		t.Fatalf("sender top-up webhook did not arrive: %v", err)
-	}
-
-	receiverWallet := app.getWallet(t, receiverToken)
-	receiverWalletID := receiverWallet["id"].(string)
-
-	initialSenderBalance := app.getWalletBalance(t, senderToken)
-	initialReceiverBalance := app.getWalletBalance(t, receiverToken)
-	t.Logf("Initial — Sender: %d, Receiver: %d", initialSenderBalance, initialReceiverBalance)
-
-	// Fire two concurrent transfers of 3000 each against a 5000 balance.
-	// At most one should succeed.
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	doTransfer := func() {
-		defer wg.Done()
-		body, _ := json.Marshal(map[string]interface{}{
-			"to_wallet_id":       receiverWalletID,
-			"amount_in_piastres": 3000,
-		})
-		req, _ := http.NewRequest("POST", app.addr+"/transfers/", bytes.NewBuffer(body))
-		req.Header.Set("Authorization", "Bearer "+senderToken)
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := app.httpClient.Do(req)
-		if err != nil {
-			t.Logf("Transfer request error: %v", err)
-			return
-		}
-		defer resp.Body.Close()
-		t.Logf("Transfer status: %d", resp.StatusCode)
-	}
-
-	go doTransfer()
-	go doTransfer()
-	wg.Wait()
-
-	time.Sleep(500 * time.Millisecond)
-
-	finalSenderBalance := app.getWalletBalance(t, senderToken)
-	finalReceiverBalance := app.getWalletBalance(t, receiverToken)
-
-	t.Logf("Final — Sender: %d, Receiver: %d", finalSenderBalance, finalReceiverBalance)
-
-	if finalSenderBalance < 0 {
-		t.Errorf("RACE CONDITION: sender balance went negative (%d)", finalSenderBalance)
-	}
-
-	maxExpectedReceiver := initialReceiverBalance + initialSenderBalance
-	if finalReceiverBalance > maxExpectedReceiver {
-		t.Errorf("RACE CONDITION: receiver got more than sender had (%d > %d)", finalReceiverBalance, maxExpectedReceiver)
-	}
-
-	totalOut := initialSenderBalance - finalSenderBalance
-	totalIn := finalReceiverBalance - initialReceiverBalance
-	if totalOut != totalIn {
-		t.Errorf("ATOMICITY BUG: money out (%d) != money in (%d)", totalOut, totalIn)
-	}
+	return status
 }
