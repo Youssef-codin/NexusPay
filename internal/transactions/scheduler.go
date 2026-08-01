@@ -2,8 +2,11 @@ package transactions
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
+	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 )
 
@@ -64,11 +67,46 @@ func (s *Scheduler) sweepTick() {
 // RunOnce executes every scheduled transaction that is now due. Exported so it
 // is testable outside cron.
 func (s *Scheduler) RunOnce(ctx context.Context) error {
-	return ErrNotImplemented
+	return s.drain(ctx, s.repo.ClaimDueTransactions, repo.TransactionStatusScheduled)
 }
 
 // SweepOnce finishes transactions left parked in 'crediting' by a crashed
 // worker. A live worker that beat it simply yields zero rows.
 func (s *Scheduler) SweepOnce(ctx context.Context) error {
-	return ErrNotImplemented
+	return s.drain(ctx, s.repo.ClaimStuckCrediting, repo.TransactionStatusCrediting)
+}
+
+// drain claims a batch and hands each row to the same unmodified Complete.
+//
+// The claim and the execution are deliberately separate transactions: that is
+// what lets both workers share one Complete, and it is safe because losing a
+// row is not an error. Whatever happens to one row, the rest of the batch still
+// runs -- a tick that aborted early would strand due transactions behind a
+// single bad one.
+func (s *Scheduler) drain(
+	ctx context.Context,
+	claim func(context.Context, int32) ([]repo.Transaction, error),
+	from repo.TransactionStatus,
+) error {
+	rows, err := claim(ctx, batchSize)
+	if err != nil {
+		return err
+	}
+
+	for _, row := range rows {
+		id := uuid.UUID(row.ID.Bytes)
+
+		_, err := s.svc.Complete(ctx, id, from)
+		switch {
+		case err == nil, errors.Is(err, ErrAlreadyProcessed):
+			// Nothing to do: either we moved it or somebody else already had.
+		case errors.Is(err, ErrInsufficientFunds):
+			// Complete has already parked the row as 'failed'.
+			slog.Warn("Transaction failed for insufficient funds", "transaction_id", id)
+		default:
+			slog.Error("Failed to complete transaction", "error", err, "transaction_id", id)
+		}
+	}
+
+	return nil
 }

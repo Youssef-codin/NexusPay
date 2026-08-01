@@ -46,6 +46,11 @@ import (
 const (
 	serverPort       = "3002"
 	testUserPassword = "TestPassword123!"
+
+	// offlineWebhookSecret is used by setupOffline. Tests that synthesise their
+	// own signed events only need the app and the test to agree on a secret --
+	// the Stripe CLI is only required when a real PaymentIntent is involved.
+	offlineWebhookSecret = "whsec_integration_test_secret"
 )
 
 var (
@@ -316,8 +321,21 @@ func cleanup(ctx context.Context) {
 
 // setup starts all dependencies, the Stripe CLI (to get the real webhook secret),
 // and then the test HTTP server — in that order so the handler is created with
-// the actual signing secret.
+// the actual signing secret. Use it only for tests that create a real
+// PaymentIntent; everything else should use setupOffline.
 func setup() error {
+	return setupWith(true)
+}
+
+// setupOffline is setup without the Stripe CLI: the app is built with a fixed
+// signing secret that the test signs its own events with. Most money-safety
+// tests seed balances directly and never touch the Stripe API, so requiring a
+// live account for them only makes the suite fragile.
+func setupOffline() error {
+	return setupWith(false)
+}
+
+func setupWith(withStripeCLI bool) error {
 	mu.Lock()
 
 	if projectRoot, err := findProjectRoot(); err == nil {
@@ -325,13 +343,15 @@ func setup() error {
 		godotenv.Load(projectRoot + "/.env.local")
 	}
 
-	if err := checkStripeCLI(); err != nil {
-		mu.Unlock()
-		return err
-	}
-	if err := checkStripeKey(); err != nil {
-		mu.Unlock()
-		return err
+	if withStripeCLI {
+		if err := checkStripeCLI(); err != nil {
+			mu.Unlock()
+			return err
+		}
+		if err := checkStripeKey(); err != nil {
+			mu.Unlock()
+			return err
+		}
 	}
 
 	ctx := context.Background()
@@ -348,10 +368,14 @@ func setup() error {
 
 	// Start the Stripe CLI before the app so we have the signing secret ready
 	// when we construct the webhook handler.
-	if err := startStripeCLI(); err != nil {
-		cleanup(ctx)
-		mu.Unlock()
-		return fmt.Errorf("start stripe cli: %w", err)
+	if withStripeCLI {
+		if err := startStripeCLI(); err != nil {
+			cleanup(ctx)
+			mu.Unlock()
+			return fmt.Errorf("start stripe cli: %w", err)
+		}
+	} else {
+		webhookSecret = offlineWebhookSecret
 	}
 
 	if _, err := setupTestApp(); err != nil {
@@ -466,9 +490,7 @@ func setupTestApp() (*testApp, error) {
 		}
 	}()
 
-	time.Sleep(500 * time.Millisecond)
-
-	testAppInstance = &testApp{
+	app := &testApp{
 		server:     server,
 		addr:       "http://localhost:" + serverPort,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
@@ -476,7 +498,36 @@ func setupTestApp() (*testApp, error) {
 		scheduler:  scheduler,
 	}
 
+	// Poll rather than sleep. Every test rebinds the same port, so a fixed sleep
+	// races with the previous server releasing it and shows up as an EOF on the
+	// first request.
+	if err := app.waitReady(10 * time.Second); err != nil {
+		server.Close()
+		return nil, err
+	}
+
+	testAppInstance = app
+
 	return testAppInstance, nil
+}
+
+// waitReady blocks until /health answers from the server we just started.
+func (app *testApp) waitReady(timeout time.Duration) error {
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(app.addr + "/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusNoContent {
+				return nil
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	return fmt.Errorf("test server never became ready on port %s", serverPort)
 }
 
 func parseRedisAddr() (string, string) {
@@ -503,6 +554,9 @@ func (app *testApp) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	app.server.Shutdown(ctx)
+	// Shutdown can return with connections still draining; the next test rebinds
+	// this port immediately, so drop them.
+	app.server.Close()
 }
 
 func (app *testApp) registerUser(t *testing.T, email, password string) string {
