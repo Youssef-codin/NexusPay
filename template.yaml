@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: NexusPay API on Lambda (Function URL + EventBridge-scheduled workers)
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: Neon *pooled* connection string (host contains -pooler), e.g. ...?sslmode=require&pool_max_conns=2
+  RedisUrl:
+    Type: String
+    NoEcho: true
+    Description: Upstash Redis URL (rediss://default:<password>@<host>:6379)
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  StripeSecretKey:
+    Type: String
+    NoEcho: true
+  StripeWebhookSecret:
+    Type: String
+    NoEcho: true
+    Description: Signing secret of the Stripe webhook endpoint that points at this function's URL
+  FrontendUrl:
+    Type: String
+    Description: Allowed CORS origin
+  WorkerSchedule:
+    Type: String
+    Default: rate(15 minutes)
+    Description: >-
+      How often the scheduler and sweeper run. Every tick wakes Neon, which
+      suspends after ~5 idle minutes, so anything faster than that keeps the
+      database awake 24/7 and burns through the free compute allowance.
+
+Globals:
+  Function:
+    Runtime: provided.al2023
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 30
+
+Resources:
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      # Built by `just lambda-build`: a single static binary named bootstrap.
+      CodeUri: bin/lambda/
+      Handler: bootstrap
+      LoggingConfig:
+        LogGroup: !Ref ApiLogGroup
+      Environment:
+        Variables:
+          GOOSE_DBSTRING: !Ref DatabaseUrl
+          REDIS_URL: !Ref RedisUrl
+          JWT_SECRET: !Ref JwtSecret
+          STRIPE_SECRET_KEY: !Ref StripeSecretKey
+          STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
+          FRONTEND_URL: !Ref FrontendUrl
+      FunctionUrlConfig:
+        AuthType: NONE
+      Events:
+        # Both jobs funnel into transactions.Service.Complete, whose guarded
+        # update makes overlapping or retried ticks harmless.
+        RunDue:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref WorkerSchedule
+            Input: '{"job":"run"}'
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+        SweepStuck:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref WorkerSchedule
+            Input: '{"job":"sweep"}'
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+
+  # Public Function URLs need lambda:InvokeFunction as well as
+  # lambda:InvokeFunctionUrl; SAM only adds the latter.
+  ApiFunctionUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  # Without an explicit group, logs are kept forever and slowly cost money.
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 14
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the API. Point Stripe at <ApiUrl>webhook/stripe
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl
