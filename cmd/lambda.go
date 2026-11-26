@@ -39,15 +39,36 @@ type lambdaEvent struct {
 	RequestContext json.RawMessage `json:"requestContext"`
 }
 
+// jobRunner is the part of transactions.Scheduler the scheduled events drive.
+type jobRunner interface {
+	RunOnce(ctx context.Context) error
+	SweepOnce(ctx context.Context) error
+}
+
 func (app *application) runLambda(h http.Handler) {
-	lambda.Start(func(ctx context.Context, raw json.RawMessage) (any, error) {
+	lambda.Start(lambdaHandler(h, app.scheduler))
+}
+
+// lambdaHandler routes one invocation: a scheduled job goes to the worker, and
+// anything else is treated as a Function URL request for the router.
+func lambdaHandler(
+	h http.Handler,
+	jobs jobRunner,
+) func(context.Context, json.RawMessage) (any, error) {
+	return func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var ev lambdaEvent
 		if err := json.Unmarshal(raw, &ev); err != nil {
 			return nil, fmt.Errorf("decode event: %w", err)
 		}
 
 		if ev.Job != "" {
-			return nil, app.runJob(ctx, ev.Job)
+			return nil, runJob(ctx, jobs, ev.Job)
+		}
+
+		// Neither shape: most likely a schedule whose Input lost its "job" key.
+		// Failing loudly beats quietly serving it as GET / and returning 404.
+		if len(ev.RequestContext) == 0 {
+			return nil, fmt.Errorf("unrecognised event: %s", truncate(raw, 200))
 		}
 
 		var req events.LambdaFunctionURLRequest
@@ -55,16 +76,23 @@ func (app *application) runLambda(h http.Handler) {
 			return nil, fmt.Errorf("decode function url request: %w", err)
 		}
 		return serveFunctionURL(ctx, h, req)
-	})
+	}
 }
 
-func (app *application) runJob(ctx context.Context, job string) error {
+func truncate(b []byte, n int) string {
+	if len(b) <= n {
+		return string(b)
+	}
+	return string(b[:n]) + "..."
+}
+
+func runJob(ctx context.Context, jobs jobRunner, job string) error {
 	slog.Info("Running scheduled job", "job", job)
 	switch job {
 	case jobRun:
-		return app.scheduler.RunOnce(ctx)
+		return jobs.RunOnce(ctx)
 	case jobSweep:
-		return app.scheduler.SweepOnce(ctx)
+		return jobs.SweepOnce(ctx)
 	default:
 		return fmt.Errorf("unknown job %q", job)
 	}

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -90,4 +92,87 @@ func TestServeFunctionURL_RejectsBadBase64(t *testing.T) {
 
 	_, err := serveFunctionURL(context.Background(), http.NotFoundHandler(), ev)
 	require.Error(t, err)
+}
+
+// fakeJobs records which worker entrypoint a scheduled event reached.
+type fakeJobs struct {
+	runs, sweeps int
+	err          error
+}
+
+func (f *fakeJobs) RunOnce(context.Context) error   { f.runs++; return f.err }
+func (f *fakeJobs) SweepOnce(context.Context) error { f.sweeps++; return f.err }
+
+// mustNotServe fails the test if an event that should go to the worker is
+// routed to the HTTP handler instead.
+func mustNotServe(t *testing.T) http.Handler {
+	return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Errorf("scheduled event was routed to the HTTP handler")
+	})
+}
+
+func TestLambdaHandler_ScheduledJobs(t *testing.T) {
+	cases := []struct {
+		name               string
+		payload            string
+		wantRuns, wantSwps int
+	}{
+		{"run", `{"job":"run"}`, 1, 0},
+		{"sweep", `{"job":"sweep"}`, 0, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			jobs := &fakeJobs{}
+			res, err := lambdaHandler(mustNotServe(t), jobs)(context.Background(), []byte(tc.payload))
+			require.NoError(t, err)
+			require.Nil(t, res)
+			require.Equal(t, tc.wantRuns, jobs.runs)
+			require.Equal(t, tc.wantSwps, jobs.sweeps)
+		})
+	}
+}
+
+func TestLambdaHandler_JobErrorIsReturned(t *testing.T) {
+	// A returned error marks the invocation failed, which is what surfaces in
+	// CloudWatch metrics and alarms.
+	boom := errors.New("claim failed")
+	jobs := &fakeJobs{err: boom}
+
+	_, err := lambdaHandler(mustNotServe(t), jobs)(context.Background(), []byte(`{"job":"run"}`))
+	require.ErrorIs(t, err, boom)
+}
+
+func TestLambdaHandler_RejectsUnknownAndMalformedEvents(t *testing.T) {
+	for name, payload := range map[string]string{
+		"unknown job":    `{"job":"drop-tables"}`,
+		"no job no http": `{"source":"aws.events","detail":{}}`,
+		"empty object":   `{}`,
+		"not json":       `not json`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			jobs := &fakeJobs{}
+			_, err := lambdaHandler(mustNotServe(t), jobs)(context.Background(), []byte(payload))
+			require.Error(t, err)
+			require.Zero(t, jobs.runs+jobs.sweeps)
+		})
+	}
+}
+
+func TestLambdaHandler_FunctionURLRequestGoesToRouter(t *testing.T) {
+	jobs := &fakeJobs{}
+	var hit string
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = r.Method + " " + r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	ev := urlEvent(http.MethodGet, "/healthx", "")
+	raw, err := json.Marshal(ev)
+	require.NoError(t, err)
+
+	res, err := lambdaHandler(h, jobs)(context.Background(), raw)
+	require.NoError(t, err)
+	require.Equal(t, "GET /healthx", hit)
+	require.Equal(t, http.StatusNoContent, res.(events.LambdaFunctionURLResponse).StatusCode)
+	require.Zero(t, jobs.runs+jobs.sweeps)
 }

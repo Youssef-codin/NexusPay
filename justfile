@@ -132,3 +132,15 @@ lambda-deploy: lambda-build
 [group('lambda')]
 lambda-logs:
     sam logs --stack-name nexuspay --tail
+
+# AWS's Lambda Runtime Interface Emulator, used by the Lambda integration test.
+[group('lambda')]
+lambda-rie-install:
+    mkdir -p bin
+    curl -fsSL -o bin/aws-lambda-rie https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie$([ "$(uname -m)" = "aarch64" ] && echo "-arm64")
+    chmod +x bin/aws-lambda-rie
+
+# Runs the real bootstrap under the emulator against testcontainers Postgres/Redis.
+[group('lambda')]
+test-lambda:
+    go test -tags integration -race -count=1 ./tests/integration/ -run TestLambdaEmulator_Integration -v
