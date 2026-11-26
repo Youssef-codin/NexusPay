@@ -111,3 +111,24 @@ seed:
 [group('setup')]
 setup: tidy sqlc-gen
     @echo "Setup complete!"
+
+# ── Lambda ────────────────────────────────────────────────────────────────────
+
+# Static arm64 binary named `bootstrap`, which is what provided.al2023 runs.
+[group('lambda')]
+lambda-build:
+    mkdir -p bin/lambda
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w" -o bin/lambda/bootstrap ./cmd
+
+# First deploy: prompts for the parameters and saves them to samconfig.toml (gitignored).
+[group('lambda')]
+lambda-deploy-guided: lambda-build
+    sam deploy --guided --stack-name nexuspay --capabilities CAPABILITY_IAM
+
+[group('lambda')]
+lambda-deploy: lambda-build
+    sam deploy
+
+[group('lambda')]
+lambda-logs:
+    sam logs --stack-name nexuspay --tail

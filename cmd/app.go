@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -29,12 +27,6 @@ import (
 )
 
 func (app *application) mount() http.Handler {
-	host, portStr, err := net.SplitHostPort(app.redisOpts.Addr)
-	if err != nil {
-		panic(err)
-	}
-	port, _ := strconv.Atoi(portStr)
-
 	rmain := chi.NewRouter()
 	rmain.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, "route not found", http.StatusNotFound)
@@ -79,9 +71,9 @@ func (app *application) mount() http.Handler {
 	)
 	TransactionsHandler := transactions.NewHandler(TransactionsService)
 
-	TransactionsScheduler := transactions.NewScheduler(TransactionsService, TransactionRepo)
-	TransactionsScheduler.Start()
-	app.scheduler = TransactionsScheduler
+	// Started by run() for the long-lived server; on Lambda, EventBridge
+	// schedules call RunOnce/SweepOnce instead.
+	app.scheduler = transactions.NewScheduler(TransactionsService, TransactionRepo)
 
 	WebhookService := stripe.NewWebhookService(TransactionsService)
 	WebhookHandler := stripe.NewWebhookHandler(
@@ -140,8 +132,7 @@ func (app *application) mount() http.Handler {
 			time.Minute,
 			httprate.WithKeyByIP(),
 			httprateredis.WithRedisLimitCounter(&httprateredis.Config{
-				Host: host,
-				Port: uint16(port),
+				Client: app.redis,
 			}),
 		))
 		rwebhooks.Route("/webhook", func(r chi.Router) {
@@ -161,6 +152,8 @@ func (app *application) run(h http.Handler) error {
 		ReadTimeout:  time.Second * 10,
 		IdleTimeout:  time.Minute,
 	}
+
+	app.scheduler.Start()
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
