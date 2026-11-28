@@ -75,27 +75,34 @@ func (h *handler) handleEvent(w http.ResponseWriter, req *http.Request, event st
 
 	slog.Info("Processing webhook", "eventType", event.Type, "transactionID", transactionID)
 
+	// A genuine error must surface as a 500 so Stripe retries. The
+	// already-processed case is not an error -- the service swallows it and
+	// returns nil, which is what makes redelivery safe.
+	err = nil
 	switch event.Type {
 	case "payment_intent.succeeded":
-		if err := h.service.HandlePaymentSucceeded(req.Context(), HandlePaymentSucceededRequest{
+		err = h.service.HandlePaymentSucceeded(req.Context(), HandlePaymentSucceededRequest{
 			TransactionID: txUUID,
-		}); err != nil {
-			slog.Error("Failed to handle payment succeeded", "error", err, "transaction_id", transactionID)
-		}
+		})
 	case "payment_intent.payment_failed":
-		if err := h.service.HandlePaymentFailed(req.Context(), HandlePaymentFailedRequest{
+		err = h.service.HandlePaymentFailed(req.Context(), HandlePaymentFailedRequest{
 			TransactionID: txUUID,
-		}); err != nil {
-			slog.Error("Failed to handle payment failed", "error", err, "transaction_id", transactionID)
-		}
+		})
 	case "payment_intent.canceled":
-		if err := h.service.HandlePaymentCanceled(req.Context(), HandlePaymentCanceledRequest{
+		err = h.service.HandlePaymentCanceled(req.Context(), HandlePaymentCanceledRequest{
 			TransactionID: txUUID,
-		}); err != nil {
-			slog.Error("Failed to handle payment canceled", "error", err, "transaction_id", transactionID)
-		}
+		})
 	default:
 		slog.Debug("Unhandled event type", "type", event.Type)
+	}
+
+	if err != nil {
+		slog.Error("Failed to handle webhook event",
+			"error", err,
+			"event_type", event.Type,
+			"transaction_id", transactionID,
+		)
+		return api.WrappedError(http.StatusInternalServerError, "Failed to handle event")
 	}
 
 	api.Respond(w, nil, http.StatusOK)

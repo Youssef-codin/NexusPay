@@ -1,0 +1,147 @@
+info:
+  name: Create transaction
+  type: http
+  seq: 1
+  tags:
+    - Transactions
+
+http:
+  method: POST
+  url: "{{baseUrl}}/transactions"
+  body:
+    type: json
+    data: |-
+      {
+        "receiver_id": "123e4567-e89b-12d3-a456-426614174002",
+        "amount_in_piastres": 5000,
+        "note": "Dinner split",
+        "category": "food"
+      }
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+docs: |-
+  Without scheduled_at the transfer is inserted as 'crediting', committed, and
+  then completed immediately -- a crash in between leaves a row the sweeper
+  finishes, so an accepted transfer is never silently lost.
+
+  With scheduled_at set, the row is stored as 'scheduled' and the scheduler
+  picks it up when it comes due.
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 201 Response
+    description: Immediate transfer completed
+    request:
+      url: "{{baseUrl}}/transactions"
+      method: POST
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "receiver_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Dinner split",
+            "category": "food"
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "123e4567-e89b-12d3-a456-426614174001",
+            "sender": { "id": "123e4567-e89b-12d3-a456-426614174000", "full_name": "John Doe" },
+            "receiver": { "id": "123e4567-e89b-12d3-a456-426614174002", "full_name": "Jane Roe" },
+            "amount_in_piastres": 5000,
+            "direction": "debit",
+            "status": "completed",
+            "note": "Dinner split",
+            "sender_category": "food",
+            "created_at": "2024-01-15T10:30:00Z"
+          }
+  - name: 201 Response (Scheduled)
+    description: Scheduled for a future date
+    request:
+      url: "{{baseUrl}}/transactions"
+      method: POST
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "receiver_id": "123e4567-e89b-12d3-a456-426614174002",
+            "amount_in_piastres": 5000,
+            "note": "Rent",
+            "category": "bills",
+            "scheduled_at": "2026-02-01T09:00:00Z"
+          }
+    response:
+      status: 201
+      statusText: Created
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "123e4567-e89b-12d3-a456-426614174001",
+            "sender": { "id": "123e4567-e89b-12d3-a456-426614174000", "full_name": "John Doe" },
+            "receiver": { "id": "123e4567-e89b-12d3-a456-426614174002", "full_name": "Jane Roe" },
+            "amount_in_piastres": 5000,
+            "direction": "debit",
+            "status": "scheduled",
+            "note": "Rent",
+            "scheduled_at": "2026-02-01T09:00:00Z",
+            "created_at": "2024-01-15T10:30:00Z"
+          }
+  - name: 400 Response
+    description: Bad request - insufficient funds
+    request:
+      url: "{{baseUrl}}/transactions"
+      method: POST
+    response:
+      status: 400
+      statusText: Bad Request
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "Insufficient funds"
+          }
+  - name: 404 Response
+    description: Receiver does not exist
+    request:
+      url: "{{baseUrl}}/transactions"
+      method: POST
+    response:
+      status: 404
+      statusText: Not Found
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "User was not found"
+          }

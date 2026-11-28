@@ -1,0 +1,63 @@
+info:
+  name: Get me
+  type: http
+  seq: 6
+  tags:
+    - Users
+
+http:
+  method: GET
+  url: "{{baseUrl}}/users/me"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+docs: |-
+  Profile plus balance. Replaces GET /wallet/{userId} -- wallets are gone and the
+  balance lives on the users row.
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 200 Response
+    description: Profile retrieved
+    request:
+      url: "{{baseUrl}}/users/me"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "email": "john@gmail.com",
+            "full_name": "John Doe",
+            "balance": 100000,
+            "created_at": "2024-01-15T10:30:00Z"
+          }
+  - name: 401 Response
+    description: Unauthorized
+    request:
+      url: "{{baseUrl}}/users/me"
+      method: GET
+    response:
+      status: 401
+      statusText: Unauthorized
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "error": "unauthorized"
+          }

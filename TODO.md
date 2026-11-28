@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Rewrite
+- [x] Rewrite
 - [ ] Add AI analytics
 - [ ] Add caching for login
 - [ ] add Idempotency for transfer

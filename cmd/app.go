@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -17,10 +15,8 @@ import (
 	"github.com/Youssef-codin/NexusPay/internal/payment/stripe"
 	"github.com/Youssef-codin/NexusPay/internal/security"
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
-	"github.com/Youssef-codin/NexusPay/internal/transfers"
 	"github.com/Youssef-codin/NexusPay/internal/users"
 	"github.com/Youssef-codin/NexusPay/internal/utils/api"
-	"github.com/Youssef-codin/NexusPay/internal/wallet"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -31,12 +27,6 @@ import (
 )
 
 func (app *application) mount() http.Handler {
-	host, portStr, err := net.SplitHostPort(app.redisOpts.Addr)
-	if err != nil {
-		panic(err)
-	}
-	port, _ := strconv.Atoi(portStr)
-
 	rmain := chi.NewRouter()
 	rmain.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, "route not found", http.StatusNotFound)
@@ -64,35 +54,28 @@ func (app *application) mount() http.Handler {
 
 	PaymentService := stripe.NewService(app.config.stripe.apiKey)
 
-	TransactionRepo := transactions.NewRepo(app.db)
-	TransactionsService := transactions.NewService(TransactionRepo)
-
-	WalletRepo := wallet.NewRepo(app.db)
-	WalletService := wallet.NewService(app.db, WalletRepo, TransactionsService, PaymentService)
-	WalletHandler := wallet.NewHandler(WalletService)
-
 	AuthRepo := auth.NewRepo(app.db)
-	AuthService := auth.NewService(app.db, AuthRepo, UserCache, authenticator, WalletService)
+	AuthService := auth.NewService(app.db, AuthRepo, UserCache, authenticator)
 	AuthHandler := auth.NewHandler(AuthService, authenticator)
 
 	UserRepo := users.NewRepo(app.db)
 	UserService := users.NewService(UserRepo, UserCache)
 	UserHandler := users.NewHandler(UserService)
 
-	TransfersRepo := transfers.NewRepo(app.db)
-	TransfersService := transfers.NewService(
+	TransactionRepo := transactions.NewRepo(app.db)
+	TransactionsService := transactions.NewService(
 		app.db,
-		TransfersRepo,
-		WalletService,
-		TransactionsService,
+		TransactionRepo,
+		UserService,
+		PaymentService,
 	)
-	TransfersHandler := transfers.NewHandler(TransfersService)
+	TransactionsHandler := transactions.NewHandler(TransactionsService)
 
-	TransfersScheduler := transfers.NewScheduler(TransfersService, app.db, TransfersRepo)
-	TransfersScheduler.Start()
-	app.transfersScheduler = TransfersScheduler
+	// Started by run() for the long-lived server; on Lambda, EventBridge
+	// schedules call RunOnce/SweepOnce instead.
+	app.scheduler = transactions.NewScheduler(TransactionsService, TransactionRepo)
 
-	WebhookService := stripe.NewWebhookService(app.db, WalletService, TransactionsService)
+	WebhookService := stripe.NewWebhookService(TransactionsService)
 	WebhookHandler := stripe.NewWebhookHandler(
 		app.config.stripe.webhookSecret,
 		WebhookService,
@@ -128,26 +111,18 @@ func (app *application) mount() http.Handler {
 			r.Get("/test", api.Wrap(AuthHandler.TestAuth))
 			r.Post("/logout", api.Wrap(AuthHandler.LogoutHandler))
 			r.Get("/", api.Wrap(UserHandler.SearchByName))
+			r.Get("/me", api.Wrap(UserHandler.GetMe))
 		})
 
-		rprotected.Route("/wallet", func(r chi.Router) {
-			r.Use(api.NewUserLimiter(100, app.redis))
-			r.Get("/payments", api.Wrap(WalletHandler.GetPayments))
-			r.Get("/{userId}", api.Wrap(WalletHandler.GetByUserId))
-			r.Patch("/", api.Wrap(WalletHandler.TopUp))
-		})
-
-		rprotected.Route("/transfers", func(r chi.Router) {
+		rprotected.Route("/transactions", func(r chi.Router) {
 			r.Use(api.NewUserLimiter(30, app.redis))
-			r.Get("/", api.Wrap(TransfersHandler.GetTransfers))
-			r.Post("/", api.Wrap(TransfersHandler.CreateTransfer))
+			r.Get("/", api.Wrap(TransactionsHandler.List))
+			r.Post("/", api.Wrap(TransactionsHandler.Create))
+			r.Post("/topup", api.Wrap(TransactionsHandler.TopUp))
 
-			r.Route("/scheduled", func(r chi.Router) {
-				r.Get("/", api.Wrap(TransfersHandler.GetScheduledTransfers))
-				r.Delete("/{id}", api.Wrap(TransfersHandler.DeleteScheduledTransfer))
-			})
-
-			r.Get("/{id}", api.Wrap(TransfersHandler.GetTransferByID))
+			r.Get("/{id}", api.Wrap(TransactionsHandler.GetByID))
+			r.Delete("/{id}", api.Wrap(TransactionsHandler.Cancel))
+			r.Patch("/{id}/category", api.Wrap(TransactionsHandler.SetCategory))
 		})
 	})
 
@@ -157,8 +132,7 @@ func (app *application) mount() http.Handler {
 			time.Minute,
 			httprate.WithKeyByIP(),
 			httprateredis.WithRedisLimitCounter(&httprateredis.Config{
-				Host: host,
-				Port: uint16(port),
+				Client: app.redis,
 			}),
 		))
 		rwebhooks.Route("/webhook", func(r chi.Router) {
@@ -179,6 +153,8 @@ func (app *application) run(h http.Handler) error {
 		IdleTimeout:  time.Minute,
 	}
 
+	app.scheduler.Start()
+
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("Server error: %v", err)
@@ -190,8 +166,8 @@ func (app *application) run(h http.Handler) error {
 
 	<-ctx.Done()
 
-	log.Println("Shutting down transfers scheduler...")
-	if err := app.transfersScheduler.Stop(); err != nil {
+	log.Println("Shutting down transactions scheduler...")
+	if err := app.scheduler.Stop(); err != nil {
 		log.Printf("Scheduler shutdown error: %v", err)
 	}
 
@@ -202,11 +178,11 @@ func (app *application) run(h http.Handler) error {
 }
 
 type application struct {
-	config             config
-	db                 *db.DB
-	redis              *redis.Client
-	redisOpts          *redis.Options
-	transfersScheduler *transfers.Scheduler
+	config    config
+	db        *db.DB
+	redis     *redis.Client
+	redisOpts *redis.Options
+	scheduler *transactions.Scheduler
 }
 
 type stripeConfig struct {

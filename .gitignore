@@ -33,3 +33,9 @@ tmp/
 .idea/
 .vscode/
 .opencode/
+
+# Lambda / SAM (samconfig.toml holds the secret parameter values)
+bin/lambda/
+bin/aws-lambda-rie
+.aws-sam/
+samconfig.toml

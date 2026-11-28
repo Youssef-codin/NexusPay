@@ -4,16 +4,12 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Youssef-codin/NexusPay/internal/db"
 	repo "github.com/Youssef-codin/NexusPay/internal/db/postgresql/sqlc"
 	"github.com/Youssef-codin/NexusPay/internal/transactions"
-	"github.com/Youssef-codin/NexusPay/internal/wallet"
+	"github.com/google/uuid"
 )
 
-var (
-	ErrParseEvent        = errors.New("failed to parse event")
-	ErrAlreadyProcessing = errors.New("already processing transaction")
-)
+var ErrParseEvent = errors.New("failed to parse event")
 
 type IService interface {
 	HandlePaymentSucceeded(ctx context.Context, req HandlePaymentSucceededRequest) error
@@ -22,95 +18,71 @@ type IService interface {
 }
 
 type WebhookService struct {
-	txManager      db.TxManager
-	walletSvc      wallet.IService
 	transactionSvc transactions.IService
 }
 
-func NewWebhookService(
-	txManager db.TxManager,
-	walletSvc wallet.IService,
-	transactionSvc transactions.IService,
-) IService {
+func NewWebhookService(transactionSvc transactions.IService) IService {
 	return &WebhookService{
-		txManager:      txManager,
-		walletSvc:      walletSvc,
 		transactionSvc: transactionSvc,
 	}
 }
 
+// HandlePaymentSucceeded is two transactions on purpose. Tx1 claims
+// awaiting_payment -> crediting and commits, so a row sitting in 'crediting'
+// means the credit definitively did not commit and the sweeper can finish it.
+// Tx2 is Complete(), which moves the money.
+//
+// A zero-row claim means another delivery of the same event already did this,
+// so we return nil -- Stripe gets a 2xx and stops retrying.
 func (svc *WebhookService) HandlePaymentSucceeded(
 	ctx context.Context,
 	req HandlePaymentSucceededRequest,
 ) error {
-	txCtx, tx, err := svc.txManager.StartTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(txCtx)
-
-	transaction, err := svc.transactionSvc.GetById(txCtx, transactions.GetByIdRequest{
-		ID: req.TransactionID,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	if transaction.Status == repo.TransactionStatusProcessing ||
-		transaction.Status == repo.TransactionStatusCompleted {
-		return ErrAlreadyProcessing
-	}
-
-	err = svc.transactionSvc.UpdateStatus(txCtx, transactions.UpdateTransactionRequest{
-		ID:     transaction.ID,
-		Status: repo.TransactionStatusProcessing,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	_, err = svc.walletSvc.AddToWallet(txCtx, wallet.AddToWalletRequest{
-		WalletID: transaction.WalletID,
-		Amount:   transaction.Amount,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	err = svc.transactionSvc.UpdateStatus(
-		txCtx,
-		transactions.UpdateTransactionRequest{
-			ID:     transaction.ID,
-			Status: repo.TransactionStatusCompleted,
-		},
+	_, err := svc.transactionSvc.Transition(
+		ctx,
+		req.TransactionID,
+		repo.TransactionStatusAwaitingPayment,
+		repo.TransactionStatusCrediting,
 	)
-
+	if errors.Is(err, transactions.ErrAlreadyProcessed) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 
-	return tx.Commit(txCtx)
+	_, err = svc.transactionSvc.Complete(ctx, req.TransactionID, repo.TransactionStatusCrediting)
+	if errors.Is(err, transactions.ErrAlreadyProcessed) {
+		return nil
+	}
+	return err
 }
 
 func (svc *WebhookService) HandlePaymentFailed(
 	ctx context.Context,
 	req HandlePaymentFailedRequest,
 ) error {
-	return svc.transactionSvc.UpdateStatus(ctx, transactions.UpdateTransactionRequest{
-		ID:     req.TransactionID,
-		Status: repo.TransactionStatusFailed,
-	})
+	return svc.markFailed(ctx, req.TransactionID)
 }
 
 func (svc *WebhookService) HandlePaymentCanceled(
 	ctx context.Context,
 	req HandlePaymentCanceledRequest,
 ) error {
-	return svc.transactionSvc.UpdateStatus(ctx, transactions.UpdateTransactionRequest{
-		ID:     req.TransactionID,
-		Status: repo.TransactionStatusFailed,
-	})
+	return svc.markFailed(ctx, req.TransactionID)
+}
+
+// markFailed is a single guarded awaiting_payment -> failed and never touches a
+// balance. If the row already moved on, that is somebody else's correct work.
+func (svc *WebhookService) markFailed(ctx context.Context, id uuid.UUID) error {
+	_, err := svc.transactionSvc.Transition(
+		ctx,
+		id,
+		repo.TransactionStatusAwaitingPayment,
+		repo.TransactionStatusFailed,
+	)
+	if errors.Is(err, transactions.ErrAlreadyProcessed) {
+		return nil
+	}
+	return err
 }

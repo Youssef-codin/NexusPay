@@ -111,3 +111,36 @@ seed:
 [group('setup')]
 setup: tidy sqlc-gen
     @echo "Setup complete!"
+
+# ── Lambda ────────────────────────────────────────────────────────────────────
+
+# Static arm64 binary named `bootstrap`, which is what provided.al2023 runs.
+[group('lambda')]
+lambda-build:
+    mkdir -p bin/lambda
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w" -o bin/lambda/bootstrap ./cmd
+
+# First deploy: prompts for the parameters and saves them to samconfig.toml (gitignored).
+[group('lambda')]
+lambda-deploy-guided: lambda-build
+    sam deploy --guided --stack-name nexuspay --capabilities CAPABILITY_IAM
+
+[group('lambda')]
+lambda-deploy: lambda-build
+    sam deploy
+
+[group('lambda')]
+lambda-logs:
+    sam logs --stack-name nexuspay --tail
+
+# AWS's Lambda Runtime Interface Emulator, used by the Lambda integration test.
+[group('lambda')]
+lambda-rie-install:
+    mkdir -p bin
+    curl -fsSL -o bin/aws-lambda-rie https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie$([ "$(uname -m)" = "aarch64" ] && echo "-arm64")
+    chmod +x bin/aws-lambda-rie
+
+# Runs the real bootstrap under the emulator against testcontainers Postgres/Redis.
+[group('lambda')]
+test-lambda:
+    go test -tags integration -race -count=1 ./tests/integration/ -run TestLambdaEmulator_Integration -v

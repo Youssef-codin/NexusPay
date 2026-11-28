@@ -84,6 +84,12 @@ func main() {
 	}
 
 	handler := api.mount()
+
+	if onLambda() {
+		api.runLambda(handler)
+		return
+	}
+
 	if err := api.run(handler); err != nil {
 		slog.Error("Server has failed to start, err", "err", err)
 		os.Exit(1)

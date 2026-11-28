@@ -1,0 +1,54 @@
+info:
+  name: Get transactions
+  type: http
+  seq: 2
+  tags:
+    - Transactions
+
+http:
+  method: GET
+  url: "{{baseUrl}}/transactions"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+docs: |-
+  Every transaction the caller is on either side of, newest first, with the
+  counterparty's name and a direction of "debit" or "credit".
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: 200 Response
+    description: Transactions retrieved
+    request:
+      url: "{{baseUrl}}/transactions"
+      method: GET
+    response:
+      status: 200
+      statusText: OK
+      headers:
+        - name: Content-Type
+          value: application/json
+      body:
+        type: json
+        data: |-
+          {
+            "transactions": [
+              {
+                "id": "123e4567-e89b-12d3-a456-426614174001",
+                "sender": { "id": "123e4567-e89b-12d3-a456-426614174000", "full_name": "John Doe" },
+                "receiver": { "id": "123e4567-e89b-12d3-a456-426614174002", "full_name": "Jane Roe" },
+                "amount_in_piastres": 5000,
+                "direction": "debit",
+                "status": "completed",
+                "note": "Dinner split",
+                "sender_category": "food",
+                "created_at": "2024-01-15T10:30:00Z"
+              }
+            ]
+          }

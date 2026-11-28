@@ -11,16 +11,61 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ExpenseCategory string
+
+const (
+	ExpenseCategoryFood      ExpenseCategory = "food"
+	ExpenseCategoryTransport ExpenseCategory = "transport"
+	ExpenseCategoryBills     ExpenseCategory = "bills"
+	ExpenseCategoryShopping  ExpenseCategory = "shopping"
+	ExpenseCategoryIncome    ExpenseCategory = "income"
+	ExpenseCategoryTopup     ExpenseCategory = "topup"
+	ExpenseCategoryOther     ExpenseCategory = "other"
+)
+
+func (e *ExpenseCategory) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ExpenseCategory(s)
+	case string:
+		*e = ExpenseCategory(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ExpenseCategory: %T", src)
+	}
+	return nil
+}
+
+type NullExpenseCategory struct {
+	ExpenseCategory ExpenseCategory `json:"expense_category"`
+	Valid           bool            `json:"valid"` // Valid is true if ExpenseCategory is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullExpenseCategory) Scan(value interface{}) error {
+	if value == nil {
+		ns.ExpenseCategory, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ExpenseCategory.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullExpenseCategory) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ExpenseCategory), nil
+}
+
 type TransactionStatus string
 
 const (
-	TransactionStatusPending    TransactionStatus = "pending"
-	TransactionStatusProcessing TransactionStatus = "processing"
-	TransactionStatusCompleted  TransactionStatus = "completed"
-	TransactionStatusFailed     TransactionStatus = "failed"
-	TransactionStatusReversed   TransactionStatus = "reversed"
-	TransactionStatusReversing  TransactionStatus = "reversing"
-	TransactionStatusCancelled  TransactionStatus = "cancelled"
+	TransactionStatusAwaitingPayment TransactionStatus = "awaiting_payment"
+	TransactionStatusCrediting       TransactionStatus = "crediting"
+	TransactionStatusScheduled       TransactionStatus = "scheduled"
+	TransactionStatusCompleted       TransactionStatus = "completed"
+	TransactionStatusFailed          TransactionStatus = "failed"
 )
 
 func (e *TransactionStatus) Scan(src interface{}) error {
@@ -58,125 +103,18 @@ func (ns NullTransactionStatus) Value() (driver.Value, error) {
 	return string(ns.TransactionStatus), nil
 }
 
-type TransactionType string
-
-const (
-	TransactionTypeDebit  TransactionType = "debit"
-	TransactionTypeCredit TransactionType = "credit"
-)
-
-func (e *TransactionType) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = TransactionType(s)
-	case string:
-		*e = TransactionType(s)
-	default:
-		return fmt.Errorf("unsupported scan type for TransactionType: %T", src)
-	}
-	return nil
-}
-
-type NullTransactionType struct {
-	TransactionType TransactionType `json:"transaction_type"`
-	Valid           bool            `json:"valid"` // Valid is true if TransactionType is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullTransactionType) Scan(value interface{}) error {
-	if value == nil {
-		ns.TransactionType, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.TransactionType.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullTransactionType) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.TransactionType), nil
-}
-
-type TransferStatus string
-
-const (
-	TransferStatusPending   TransferStatus = "pending"
-	TransferStatusCompleted TransferStatus = "completed"
-	TransferStatusFailed    TransferStatus = "failed"
-	TransferStatusCancelled TransferStatus = "cancelled"
-)
-
-func (e *TransferStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = TransferStatus(s)
-	case string:
-		*e = TransferStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for TransferStatus: %T", src)
-	}
-	return nil
-}
-
-type NullTransferStatus struct {
-	TransferStatus TransferStatus `json:"transfer_status"`
-	Valid          bool           `json:"valid"` // Valid is true if TransferStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullTransferStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.TransferStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.TransferStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullTransferStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.TransferStatus), nil
-}
-
-type ScheduledTransfer struct {
-	ID          pgtype.UUID        `json:"id"`
-	TransferID  pgtype.UUID        `json:"transfer_id"`
-	ScheduledAt pgtype.Timestamptz `json:"scheduled_at"`
-	ExecutedAt  pgtype.Timestamptz `json:"executed_at"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-}
-
 type Transaction struct {
-	ID          pgtype.UUID        `json:"id"`
-	WalletID    pgtype.UUID        `json:"wallet_id"`
-	Amount      int64              `json:"amount"`
-	Type        TransactionType    `json:"type"`
-	Status      TransactionStatus  `json:"status"`
-	Description pgtype.Text        `json:"description"`
-	TransferID  pgtype.UUID        `json:"transfer_id"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
-}
-
-type Transfer struct {
-	ID                  pgtype.UUID        `json:"id"`
-	FromWalletID        pgtype.UUID        `json:"from_wallet_id"`
-	ToWalletID          pgtype.UUID        `json:"to_wallet_id"`
-	Amount              int64              `json:"amount"`
-	Status              TransferStatus     `json:"status"`
-	Note                pgtype.Text        `json:"note"`
-	DebitTransactionID  pgtype.UUID        `json:"debit_transaction_id"`
-	CreditTransactionID pgtype.UUID        `json:"credit_transaction_id"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt           pgtype.Timestamptz `json:"deleted_at"`
+	ID               pgtype.UUID         `json:"id"`
+	SenderID         pgtype.UUID         `json:"sender_id"`
+	ReceiverID       pgtype.UUID         `json:"receiver_id"`
+	Amount           int64               `json:"amount"`
+	Status           TransactionStatus   `json:"status"`
+	Note             pgtype.Text         `json:"note"`
+	SenderCategory   NullExpenseCategory `json:"sender_category"`
+	ReceiverCategory NullExpenseCategory `json:"receiver_category"`
+	ScheduledAt      pgtype.Timestamptz  `json:"scheduled_at"`
+	CreatedAt        pgtype.Timestamptz  `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz  `json:"updated_at"`
 }
 
 type User struct {
@@ -186,16 +124,9 @@ type User struct {
 	FullName       string             `json:"full_name"`
 	RefreshToken   pgtype.Text        `json:"refresh_token"`
 	TokenExpiresAt pgtype.Timestamptz `json:"token_expires_at"`
+	Balance        int64              `json:"balance"`
+	IsSystem       bool               `json:"is_system"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
-}
-
-type Wallet struct {
-	ID        pgtype.UUID        `json:"id"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	Balance   int64              `json:"balance"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
 }
